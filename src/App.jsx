@@ -383,7 +383,7 @@ function Auth({ onAuth }) {
     setLoading(true); setErr("");
     const { error } = await supabase.auth.signInWithOAuth({
       provider:"google",
-      options:{ redirectTo: window.location.origin }
+      options:{ redirectTo: "https://epicxp123234.github.io/AI-Roadmap/" }
     });
     if (error) { setErr(error.message); setLoading(false); }
     // Supabase redirects to Google → comes back → App useEffect picks up session
