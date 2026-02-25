@@ -103,155 +103,213 @@ async function sendStreakLostEmail(userName, userEmail, streak) {
 
 // ── CSS ───────────────────────────────────────────────────────────────────────
 const css = `
-  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Cabinet+Grotesk:wght@300;400;500;700;800&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
   *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
   :root {
-    --blue:#2563EB; --blue2:#1D4ED8; --sky:#EFF6FF; --dark:#0F172A;
-    --mid:#475569; --light:#94A3B8; --white:#FFFFFF;
-    --green:#10B981; --amber:#F59E0B; --red:#EF4444;
-    --radius:16px; --shadow:0 4px 24px rgba(37,99,235,.12);
+    --gold:#C9A84C; --gold2:#A8893A; --gold-light:#F5E6C0; --gold-glow:rgba(201,168,76,.2);
+    --ink:#0A0A0F; --ink2:#1A1A2E; --paper:#FAFAF7; --paper2:#F0EFE9;
+    --smoke:#6B6B7B; --mist:#9B9BAA; --pearl:#E8E8E0;
+    --emerald:#1A6B4A; --ember:#C0392B; --sky-ink:#1A3A5C;
+    --radius:14px; --shadow:0 8px 40px rgba(0,0,0,.10);
+    --shadow-gold:0 4px 24px rgba(201,168,76,.25);
+    --font-display:'Playfair Display',serif;
+    --font-body:'Outfit',sans-serif;
   }
-  body { font-family:'DM Sans',sans-serif; background:#F8FAFF; color:var(--dark); min-height:100vh; }
-  h1,h2,h3,h4 { font-family:'Syne',sans-serif; }
-  .page { animation:fadeUp .4s ease both; }
-  @keyframes fadeUp { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
+  body { font-family:var(--font-body); background:var(--paper); color:var(--ink); min-height:100vh; width:100%; overflow-x:hidden; }
+  #root { width:100%; }
+
+  /* ── Noise texture overlay ── */
+  body::before {
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    opacity:.4;
+  }
+
+  h1,h2,h3,h4 { font-family:var(--font-display); }
+  p, button, input, select, textarea, label, span { font-family:var(--font-body); }
+
+  .page { animation:fadeUp .5s cubic-bezier(.22,1,.36,1) both; position:relative; z-index:1; }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes shimmer { 0%{background-position:200% center} 100%{background-position:-200% center} }
+  @keyframes pulse-gold { 0%,100%{box-shadow:0 0 0 0 rgba(201,168,76,.4)} 50%{box-shadow:0 0 0 8px rgba(201,168,76,0)} }
+
   .btn-primary {
-    background:var(--blue); color:#fff; border:none; border-radius:12px;
-    padding:14px 32px; font-family:'Syne',sans-serif; font-size:16px; font-weight:700;
-    cursor:pointer; transition:background .2s,transform .15s,box-shadow .2s;
-    box-shadow:0 4px 16px rgba(37,99,235,.35);
+    background:linear-gradient(135deg,var(--gold),var(--gold2));
+    color:var(--ink); border:none; border-radius:10px;
+    padding:14px 32px; font-family:var(--font-body); font-size:15px; font-weight:700;
+    cursor:pointer; transition:all .25s; letter-spacing:.3px;
+    box-shadow:0 4px 20px rgba(201,168,76,.4);
+    position:relative; overflow:hidden;
   }
-  .btn-primary:hover { background:var(--blue2); transform:translateY(-2px); box-shadow:0 8px 24px rgba(37,99,235,.4); }
+  .btn-primary::after {
+    content:''; position:absolute; inset:0;
+    background:linear-gradient(135deg,rgba(255,255,255,.15),transparent);
+    opacity:0; transition:opacity .2s;
+  }
+  .btn-primary:hover { transform:translateY(-2px); box-shadow:0 8px 32px rgba(201,168,76,.5); }
+  .btn-primary:hover::after { opacity:1; }
   .btn-primary:active { transform:translateY(0); }
   .btn-primary:disabled { opacity:.5; cursor:not-allowed; transform:none; }
+
   .btn-google {
-    background:#fff; color:#3c4043; border:1.5px solid #dadce0; border-radius:12px;
-    padding:13px 24px; font-family:'Syne',sans-serif; font-size:15px; font-weight:700;
-    cursor:pointer; transition:box-shadow .2s,transform .15s;
-    box-shadow:0 2px 8px rgba(0,0,0,.1); display:flex; align-items:center; gap:10px; justify-content:center;
+    background:var(--paper); color:var(--ink); border:1.5px solid var(--pearl); border-radius:10px;
+    padding:13px 24px; font-family:var(--font-body); font-size:15px; font-weight:600;
+    cursor:pointer; transition:all .2s;
+    box-shadow:0 2px 12px rgba(0,0,0,.06); display:flex; align-items:center; gap:10px; justify-content:center;
   }
-  .btn-google:hover { box-shadow:0 4px 16px rgba(0,0,0,.15); transform:translateY(-1px); }
+  .btn-google:hover { border-color:var(--gold); box-shadow:0 4px 20px rgba(201,168,76,.2); transform:translateY(-1px); }
+
   .btn-outline {
-    background:transparent; color:var(--blue); border:2px solid var(--blue);
-    border-radius:12px; padding:12px 28px; font-family:'Syne',sans-serif;
-    font-size:15px; font-weight:700; cursor:pointer; transition:all .2s;
+    background:transparent; color:var(--gold2); border:1.5px solid var(--gold);
+    border-radius:10px; padding:12px 28px; font-family:var(--font-body);
+    font-size:14px; font-weight:600; cursor:pointer; transition:all .2s; letter-spacing:.2px;
   }
-  .btn-outline:hover { background:var(--sky); }
-  .card { background:var(--white); border-radius:var(--radius); box-shadow:var(--shadow); padding:32px; }
+  .btn-outline:hover { background:var(--gold-light); }
+
+  .card {
+    background:var(--paper); border-radius:var(--radius);
+    box-shadow:var(--shadow); padding:32px;
+    border:1px solid rgba(201,168,76,.15);
+  }
   .field { display:flex; flex-direction:column; gap:6px; }
-  .field label { font-weight:500; font-size:14px; color:var(--mid); }
+  .field label { font-weight:600; font-size:13px; color:var(--smoke); letter-spacing:.5px; text-transform:uppercase; }
   .field input,.field select,.field textarea {
-    border:1.5px solid #E2E8F0; border-radius:10px; padding:12px 14px;
-    font-family:'DM Sans',sans-serif; font-size:15px; color:var(--dark);
-    transition:border-color .2s,box-shadow .2s; outline:none; background:#fff;
+    border:1.5px solid var(--pearl); border-radius:10px; padding:13px 16px;
+    font-family:var(--font-body); font-size:15px; color:var(--ink);
+    transition:border-color .2s,box-shadow .2s; outline:none; background:var(--paper);
   }
   .field input:focus,.field select:focus,.field textarea:focus {
-    border-color:var(--blue); box-shadow:0 0 0 3px rgba(37,99,235,.12);
+    border-color:var(--gold); box-shadow:0 0 0 3px var(--gold-glow);
   }
   .pill {
-    display:inline-flex; align-items:center; gap:6px; background:var(--sky);
-    color:var(--blue); border-radius:999px; padding:4px 14px; font-size:13px; font-weight:600;
+    display:inline-flex; align-items:center; gap:6px; background:var(--gold-light);
+    color:var(--gold2); border-radius:999px; padding:5px 14px; font-size:12px; font-weight:700;
+    letter-spacing:.4px; text-transform:uppercase;
   }
-  .progress-track { background:#E2E8F0; border-radius:999px; height:10px; overflow:hidden; }
-  .progress-fill { height:100%; border-radius:999px; background:linear-gradient(90deg,var(--blue),#60A5FA); transition:width .6s ease; }
+  .progress-track { background:var(--pearl); border-radius:999px; height:6px; overflow:hidden; }
+  .progress-fill { height:100%; border-radius:999px; background:linear-gradient(90deg,var(--gold),#E8C97A); transition:width .8s cubic-bezier(.22,1,.36,1); }
   .mcq-option {
-    display:flex; align-items:center; gap:12px; padding:12px 16px;
-    border:1.5px solid #E2E8F0; border-radius:10px; cursor:pointer; transition:all .15s; font-size:15px;
+    display:flex; align-items:center; gap:12px; padding:14px 18px;
+    border:1.5px solid var(--pearl); border-radius:10px; cursor:pointer;
+    transition:all .15s; font-size:15px; background:var(--paper);
   }
-  .mcq-option:hover { border-color:var(--blue); background:var(--sky); }
-  .mcq-option.chosen  { border-color:var(--blue); background:var(--sky); }
-  .mcq-option.correct { border-color:var(--green); background:#D1FAE5; }
-  .mcq-option.wrong   { border-color:var(--red); background:#FEE2E2; }
+  .mcq-option:hover { border-color:var(--gold); background:var(--gold-light); }
+  .mcq-option.chosen  { border-color:var(--gold); background:var(--gold-light); }
+  .mcq-option.correct { border-color:var(--emerald); background:#D1FAE5; }
+  .mcq-option.wrong   { border-color:var(--ember); background:#FEE2E2; }
+
   .nav {
-    position:sticky; top:0; z-index:100; background:rgba(255,255,255,.88);
-    backdrop-filter:blur(12px); border-bottom:1px solid #E2E8F0;
-    display:flex; align-items:center; justify-content:space-between; padding:0 32px; height:60px;
+    position:sticky; top:0; z-index:100;
+    background:rgba(250,250,247,.92); backdrop-filter:blur(16px);
+    border-bottom:1px solid rgba(201,168,76,.2);
+    display:flex; align-items:center; justify-content:space-between; padding:0 36px; height:64px;
   }
-  .nav-logo { font-family:'Syne',sans-serif; font-weight:800; font-size:18px; color:var(--blue); }
-  .container { max-width:780px; margin:0 auto; padding:0 20px; }
+  .nav-logo {
+    font-family:var(--font-display); font-weight:900; font-size:20px;
+    background:linear-gradient(135deg,var(--gold),var(--gold2));
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+    letter-spacing:-.3px;
+  }
+  .container { max-width:800px; margin:0 auto; padding:0 20px; }
   .stack { display:flex; flex-direction:column; }
   .row { display:flex; align-items:center; }
   .gap-4{gap:4px} .gap-8{gap:8px} .gap-10{gap:10px} .gap-12{gap:12px} .gap-14{gap:14px} .gap-16{gap:16px} .gap-20{gap:20px} .gap-24{gap:24px} .gap-32{gap:32px}
+
   .dots span {
-    display:inline-block; width:8px; height:8px; background:var(--blue);
+    display:inline-block; width:8px; height:8px; background:var(--gold);
     border-radius:50%; margin:0 3px; animation:bounce .9s infinite;
   }
   .dots span:nth-child(2){animation-delay:.15s} .dots span:nth-child(3){animation-delay:.3s}
   @keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-8px)} }
+
   .streak {
-    background:linear-gradient(135deg,#FEF3C7,#FDE68A); border:1.5px solid var(--amber);
-    color:#92400E; border-radius:12px; padding:14px 20px; font-weight:700; font-size:20px;
+    background:linear-gradient(135deg,#FEF3C7,#FDE68A);
+    border:1.5px solid var(--gold); color:#78520A;
+    border-radius:12px; padding:14px 20px; font-weight:700; font-size:20px;
   }
+
+  /* ── HERO ── */
   .hero {
-    min-height:calc(100vh - 60px); display:flex; flex-direction:column;
+    min-height:calc(100vh - 64px); display:flex; flex-direction:column;
     align-items:center; justify-content:center; text-align:center; padding:60px 20px;
-    background:radial-gradient(ellipse 80% 60% at 50% -10%,rgba(37,99,235,.1) 0%,transparent 70%);
+    width:100%; max-width:100%; position:relative; overflow:hidden;
+    background:var(--paper);
   }
-  .hero h1 { font-size:clamp(32px,6vw,64px); font-weight:800; line-height:1.1; letter-spacing:-1.5px; max-width:700px; }
-  .hero h1 span { color:var(--blue); }
-  .hero p { color:var(--mid); font-size:18px; max-width:480px; line-height:1.6; margin-top:16px; }
-  .feature-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:48px; max-width:640px; width:100%; }
-  .feature-card { background:var(--white); border-radius:14px; padding:20px; box-shadow:0 2px 12px rgba(0,0,0,.06); text-align:left; }
-  .feature-icon { font-size:28px; margin-bottom:8px; }
-  .feature-card h4 { font-size:14px; font-weight:700; }
-  .feature-card p { font-size:12px; color:var(--mid); margin-top:4px; }
-  .divider { display:flex; align-items:center; gap:12px; color:var(--light); font-size:13px; margin:4px 0; }
-  .divider::before,.divider::after { content:""; flex:1; height:1px; background:#E2E8F0; }
-  /* ── TABLET (max 768px) ── */
+  .hero::before {
+    content:''; position:absolute; width:700px; height:700px; border-radius:50%;
+    background:radial-gradient(circle,rgba(201,168,76,.12) 0%,transparent 70%);
+    top:-200px; left:50%; transform:translateX(-50%); pointer-events:none;
+  }
+  .hero::after {
+    content:''; position:absolute; inset:0; pointer-events:none;
+    background:
+      radial-gradient(1px 1px at 20% 30%, rgba(201,168,76,.3) 0%, transparent 100%),
+      radial-gradient(1px 1px at 80% 20%, rgba(201,168,76,.2) 0%, transparent 100%),
+      radial-gradient(1px 1px at 60% 70%, rgba(201,168,76,.25) 0%, transparent 100%);
+  }
+  .hero h1 {
+    font-size:clamp(36px,6vw,72px); font-weight:900; line-height:1.05;
+    letter-spacing:-2px; max-width:780px; color:var(--ink);
+    animation: fadeUp .6s cubic-bezier(.22,1,.36,1) .1s both;
+  }
+  .hero h1 span {
+    background:linear-gradient(135deg,var(--gold),#E8C04A,var(--gold2));
+    background-size:200% auto;
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+    animation: shimmer 4s linear infinite;
+  }
+  .hero p { color:var(--smoke); font-size:18px; max-width:500px; line-height:1.7; margin-top:20px; font-weight:400; }
+  .hero-badge {
+    display:inline-flex; align-items:center; gap:8px;
+    background:var(--ink); color:var(--gold-light);
+    border-radius:999px; padding:8px 20px; font-size:13px; font-weight:600;
+    letter-spacing:.5px; margin-bottom:28px;
+    animation: fadeUp .5s cubic-bezier(.22,1,.36,1) both;
+  }
+  .hero-badge span { width:6px; height:6px; background:var(--gold); border-radius:50%; animation:pulse-gold 2s infinite; }
+
+  .feature-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:56px; max-width:680px; width:100%; }
+  .feature-card {
+    background:var(--paper); border-radius:14px; padding:22px;
+    border:1px solid rgba(201,168,76,.2);
+    box-shadow:0 2px 16px rgba(0,0,0,.05); text-align:left;
+    transition:transform .2s, box-shadow .2s;
+  }
+  .feature-card:hover { transform:translateY(-3px); box-shadow:0 8px 32px rgba(201,168,76,.15); }
+  .feature-icon { font-size:26px; margin-bottom:10px; }
+  .feature-card h4 { font-size:14px; font-weight:700; font-family:var(--font-body); color:var(--ink); }
+  .feature-card p { font-size:12px; color:var(--smoke); margin-top:4px; line-height:1.5; }
+
+  .divider { display:flex; align-items:center; gap:12px; color:var(--mist); font-size:13px; margin:4px 0; }
+  .divider::before,.divider::after { content:""; flex:1; height:1px; background:var(--pearl); }
+
+  /* ── RESPONSIVE ── */
   @media(max-width:768px){
-    .hero h1 { font-size:clamp(28px,7vw,48px); letter-spacing:-1px; }
+    .hero h1 { font-size:clamp(30px,7vw,52px); letter-spacing:-1px; }
     .hero p { font-size:16px; }
     .feature-grid { grid-template-columns:repeat(2,1fr); max-width:100%; }
     .container { padding:0 16px; }
     .card { padding:24px; }
-    .nav { padding:0 20px; height:56px; }
-    .nav .row { gap:10px; }
-    .btn-primary { padding:12px 24px; font-size:15px; }
-    .btn-outline  { padding:10px 20px; font-size:14px; }
+    .nav { padding:0 20px; height:58px; }
   }
-
-  /* ── MOBILE (max 480px) ── */
   @media(max-width:480px){
     .hero { padding:40px 16px; min-height:auto; }
-    .hero h1 { font-size:clamp(26px,8vw,38px); letter-spacing:-.5px; }
+    .hero h1 { font-size:clamp(28px,8vw,40px); letter-spacing:-.5px; }
     .hero p { font-size:15px; max-width:100%; }
     .feature-grid { grid-template-columns:1fr 1fr; gap:10px; margin-top:32px; }
     .feature-card { padding:14px; }
-    .feature-icon { font-size:22px; }
-    .feature-card h4 { font-size:12px; }
-
-    .nav { padding:0 14px; height:52px; flex-wrap:nowrap; }
-    .nav-logo { font-size:15px; }
-    .nav .row { gap:6px; flex-wrap:wrap; }
-    .nav button { font-size:12px !important; }
-
-    .card { padding:16px; border-radius:12px; }
+    .nav { padding:0 14px; height:54px; }
+    .card { padding:18px; border-radius:12px; }
     .container { padding:0 12px; }
-
-    .btn-primary { padding:12px 20px; font-size:14px; width:100%; }
-    .btn-google  { padding:11px 16px; font-size:14px; }
-    .btn-outline { padding:10px 16px; font-size:13px; }
-
-    .stack.gap-20 { gap:14px; }
-    .stack.gap-24 { gap:16px; }
-    .row.gap-12   { gap:8px; flex-wrap:wrap; }
-
+    .btn-primary { padding:13px 20px; font-size:14px; width:100%; }
     h2 { font-size:22px !important; }
-    h3 { font-size:17px !important; }
-
-    .mcq-option { padding:10px 12px; font-size:14px; }
-    .progress-track { height:8px; }
-
-    .streak { padding:12px 14px; font-size:17px; }
   }
-
-  /* ── VERY SMALL (max 360px) ── */
   @media(max-width:360px){
-    .hero h1 { font-size:24px; }
+    .hero h1 { font-size:26px; }
     .feature-grid { grid-template-columns:1fr; }
-    .nav .row { display:none; }
-  }
-`;
+  }`
+;
 
 // ── Loader ────────────────────────────────────────────────────────────────────
 function Loader({ text="Loading…" }) {
@@ -321,21 +379,24 @@ function EmailSettingsModal({ onClose, userEmail, userName }) {
 function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, emailConfigured }) {
   return (
     <nav className="nav">
-      <span className="nav-logo">🚀 RoadmapAI</span>
+      <span className="nav-logo">✦ RoadmapAI</span>
       {user && (
         <div className="row gap-12" style={{flexWrap:"wrap"}}>
           {["dashboard","learn","test"].map(p=>(
             <button key={p} onClick={()=>onNav(p)} style={{
               background:"none",border:"none",cursor:"pointer",
-              fontFamily:"'DM Sans',sans-serif",fontSize:14,
-              color:page===p?"var(--blue)":"var(--mid)",fontWeight:page===p?700:400,textTransform:"capitalize"
+              fontFamily:"var(--font-body)",fontSize:14,
+              color:page===p?"var(--gold2)":"var(--smoke)",
+              fontWeight:page===p?700:400,textTransform:"capitalize",
+              borderBottom:page===p?"2px solid var(--gold)":"2px solid transparent",
+              paddingBottom:2,
             }}>{p==="learn"?"Learn":p==="test"?"Test":"Dashboard"}</button>
           ))}
           <button onClick={onOpenEmailSettings} style={{
-            background:emailConfigured?"#D1FAE5":"#FEF3C7",
-            border:emailConfigured?"1.5px solid var(--green)":"1.5px solid #F59E0B",
+            background:emailConfigured?"#D1FAE5":"var(--gold-light)",
+            border:emailConfigured?"1.5px solid #10B981":"1.5px solid var(--gold)",
             borderRadius:10,padding:"5px 12px",cursor:"pointer",fontSize:13,fontWeight:600,
-            color:emailConfigured?"#065F46":"#92400E",display:"flex",alignItems:"center",gap:4
+            color:emailConfigured?"#065F46":"var(--gold2)",display:"flex",alignItems:"center",gap:4
           }}>{emailConfigured?"🔔 ON":"🔕 Remind"}</button>
           <button className="btn-outline" style={{padding:"6px 16px",fontSize:13}} onClick={onLogout}>Logout</button>
         </div>
@@ -348,10 +409,10 @@ function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, emailConfigured
 function Landing({ onStart }) {
   return (
     <div className="page hero">
-      <div className="pill" style={{marginBottom:20}}>✨ Free for students aged 13–18</div>
-      <h1>Get a Personalized<br/><span>6-Month AI Career</span><br/>Roadmap in 60 Seconds</h1>
-      <p>Structured daily tasks. Weekly tests. Clear progress tracking. Built for the next generation of tech leaders.</p>
-      <button className="btn-primary" style={{marginTop:36,fontSize:18,padding:"16px 40px"}} onClick={onStart}>Build My Roadmap →</button>
+      <div className="hero-badge"><span/> Free for students aged 13–18</div>
+      <h1>Your Personal<br/><span>AI-Powered Career</span><br/>Roadmap Awaits</h1>
+      <p>A six-month learning plan crafted just for you. Daily lessons, weekly tests, and a streak system to keep you moving forward.</p>
+      <button className="btn-primary" style={{marginTop:40,fontSize:16,padding:"16px 44px",borderRadius:12}} onClick={onStart}>Begin Your Journey →</button>
       <div className="feature-grid">
         {[
           {icon:"📅",title:"Daily Tasks",desc:"Clear, actionable tasks every single day"},
@@ -383,7 +444,7 @@ function Auth({ onAuth }) {
     setLoading(true); setErr("");
     const { error } = await supabase.auth.signInWithOAuth({
       provider:"google",
-      options:{ redirectTo: "https://epicxp123234.github.io/AI-Roadmap/" }
+      options:{ redirectTo: window.location.origin }
     });
     if (error) { setErr(error.message); setLoading(false); }
     // Supabase redirects to Google → comes back → App useEffect picks up session
@@ -467,12 +528,13 @@ function Auth({ onAuth }) {
 // ── ONBOARDING ────────────────────────────────────────────────────────────────
 function Onboarding({ user, profile, onDone }) {
   const [form, setForm] = useState({
-    career:"Software Engineer", level:"Beginner", time:"1 hour", goal:"Strong foundation"
+    career:"", level:"Beginner", time:"1 hour", goal:"Strong foundation"
   });
   const [loading, setLoading] = useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
 
   const generate = async () => {
+    if (!form.career.trim()) { alert("Please enter what you want to learn!"); return; }
     setLoading(true);
     const name  = profile?.full_name || user?.user_metadata?.full_name || user?.email || "Student";
     const age   = profile?.age   || "15";
@@ -544,10 +606,12 @@ Include all 6 months with 4 weeks each. Tasks must be friendly, specific, encour
           <p style={{color:"var(--mid)",fontSize:14,marginTop:4}}>Tell us a bit more so we can build the perfect roadmap for you.</p>
         </div>
         <div className="stack gap-20">
-          <div className="field"><label>What do you want to become?</label>
-            <select value={form.career} onChange={e=>set("career",e.target.value)}>
-              <option>Software Engineer</option><option>AI Engineer</option><option>Web Developer</option>
-            </select>
+          <div className="field"><label>What do you want to learn or become?</label>
+            <input
+              placeholder="e.g. Web Developer, AI Engineer, Graphic Designer, Chess..."
+              value={form.career}
+              onChange={e=>set("career",e.target.value)}
+            />
           </div>
           <div className="field"><label>Current skill level</label>
             <select value={form.level} onChange={e=>set("level",e.target.value)}>
@@ -619,20 +683,20 @@ function Dashboard({ user, roadmap, progress, onUpdateProgress, onNav }) {
       {/* stats row */}
       <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:16, marginBottom:28}}>
         <div className="card" style={{padding:20, textAlign:"center"}}>
-          <div style={{fontSize:13,color:"var(--mid)",marginBottom:4}}>Month</div>
-          <div style={{fontSize:32,fontWeight:800,color:"var(--blue)",fontFamily:"Syne"}}>{currentMonth}<span style={{fontSize:16}}>/6</span></div>
+          <div style={{fontSize:13,color:"var(--smoke)",marginBottom:4,fontWeight:600,letterSpacing:.5,textTransform:"uppercase"}}>Month</div>
+          <div style={{fontSize:32,fontWeight:800,color:"var(--gold2)",fontFamily:"var(--font-display)"}}>{currentMonth}<span style={{fontSize:16}}>/6</span></div>
         </div>
         <div className="card" style={{padding:20, textAlign:"center"}}>
-          <div style={{fontSize:13,color:"var(--mid)",marginBottom:4}}>Week</div>
-          <div style={{fontSize:32,fontWeight:800,color:"var(--blue)",fontFamily:"Syne"}}>{currentWeek}<span style={{fontSize:16}}>/4</span></div>
+          <div style={{fontSize:13,color:"var(--smoke)",marginBottom:4,fontWeight:600,letterSpacing:.5,textTransform:"uppercase"}}>Week</div>
+          <div style={{fontSize:32,fontWeight:800,color:"var(--gold2)",fontFamily:"var(--font-display)"}}>{currentWeek}<span style={{fontSize:16}}>/4</span></div>
         </div>
         <div className="streak" style={{padding:20, textAlign:"center"}}>
-          <div style={{fontSize:13,marginBottom:4}}>🔥 Streak</div>
+          <div style={{fontSize:13,marginBottom:4,fontWeight:600,letterSpacing:.5,textTransform:"uppercase"}}>🔥 Streak</div>
           <div style={{fontSize:32}}>{streak} days</div>
         </div>
         <div className="card" style={{padding:20, textAlign:"center"}}>
-          <div style={{fontSize:13,color:"var(--mid)",marginBottom:4}}>Progress</div>
-          <div style={{fontSize:32,fontWeight:800,color:"var(--green)",fontFamily:"Syne"}}>{pct}%</div>
+          <div style={{fontSize:13,color:"var(--smoke)",marginBottom:4,fontWeight:600,letterSpacing:.5,textTransform:"uppercase"}}>Progress</div>
+          <div style={{fontSize:32,fontWeight:800,color:"var(--emerald)",fontFamily:"var(--font-display)"}}>{pct}%</div>
         </div>
       </div>
 
@@ -840,12 +904,12 @@ Return ONLY valid JSON, no markdown:
 
       {/* topic banner */}
       <div style={{
-        background:"linear-gradient(135deg,var(--blue),#1D4ED8)",
+        background:"linear-gradient(135deg,var(--ink),var(--ink2))",
         borderRadius:16, padding:"20px 24px", marginBottom:24,
-        color:"#fff"
+        color:"#fff", borderLeft:"4px solid var(--gold)"
       }}>
-        <div style={{fontSize:12,fontWeight:700,opacity:.7,letterSpacing:1,textTransform:"uppercase",marginBottom:4}}>Today's Topic</div>
-        <h2 style={{fontSize:22,lineHeight:1.3}}>{todayTask}</h2>
+        <div style={{fontSize:12,fontWeight:700,opacity:.6,letterSpacing:1.5,textTransform:"uppercase",marginBottom:4,color:"var(--gold-light)"}}>Today's Topic</div>
+        <h2 style={{fontSize:22,lineHeight:1.3,color:"#fff"}}>{todayTask}</h2>
       </div>
 
       {loadingLesson ? (
@@ -1060,14 +1124,15 @@ Return ONLY valid JSON, no markdown:
           {/* prof tip */}
           {lesson.profTip && (
             <div style={{
-              background:"linear-gradient(135deg,#0F172A,#1E3A5F)",
-              borderRadius:16,padding:"24px",color:"#fff"
+              background:"linear-gradient(135deg,var(--ink),var(--ink2))",
+              borderRadius:16,padding:"24px",color:"#fff",
+              borderTop:"3px solid var(--gold)"
             }}>
               <div style={{display:"flex",gap:12,alignItems:"flex-start",marginBottom:10}}>
                 <span style={{fontSize:28,flexShrink:0}}>🎓</span>
                 <div>
-                  <div style={{fontSize:11,fontWeight:700,letterSpacing:1.5,opacity:.6,textTransform:"uppercase",marginBottom:2}}>Professor's Secret Tip</div>
-                  <div style={{fontSize:13,color:"#93C5FD",fontWeight:600}}>What they only teach in top universities</div>
+                  <div style={{fontSize:11,fontWeight:700,letterSpacing:1.5,color:"var(--gold)",textTransform:"uppercase",marginBottom:2}}>Professor's Secret Tip</div>
+                  <div style={{fontSize:13,color:"rgba(245,230,192,.7)",fontWeight:600}}>What they only teach in top universities</div>
                 </div>
               </div>
               <p style={{lineHeight:1.85,fontSize:15,opacity:.9}}>{lesson.profTip}</p>
@@ -1337,12 +1402,10 @@ export default function App() {
       if (lastVisit && lastVisit !== today) {
         const yesterday = new Date(Date.now()-86400000).toISOString().slice(0,10);
         if (lastVisit !== yesterday) {
-          // Streak broken
           setStreakAlert("lost");
           const resetProg = { ...appProgress, streak:0 };
           setProgress(resetProg);
           await upsertProgress(authUser.id, { ...progressToDb(resetProg), streak:0 });
-          // Email reminder
           sendStreakLostEmail(
             prof?.full_name || authUser.user_metadata?.full_name || "Student",
             authUser.email,
@@ -1350,11 +1413,18 @@ export default function App() {
           );
         }
       }
-      // Update lastVisit
       await upsertProgress(authUser.id, { last_visit: today });
       setPage("dashboard");
     } else {
-      // New user — needs onboarding
+      // New user — save Google profile info if available, then onboard
+      if (!prof && authUser.user_metadata?.full_name) {
+        await upsertProfile(authUser.id, {
+          full_name: authUser.user_metadata.full_name,
+          age: null,
+          grade: null,
+        });
+        setProfile({ full_name: authUser.user_metadata.full_name });
+      }
       setPage("onboard");
     }
   };
