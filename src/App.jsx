@@ -444,10 +444,9 @@ function Auth({ onAuth }) {
     setLoading(true); setErr("");
     const { error } = await supabase.auth.signInWithOAuth({
       provider:"google",
-      options:{ redirectTo: window.location.origin }
+      options:{ redirectTo: "https://epicxp123234.github.io/AI-Roadmap/" }
     });
     if (error) { setErr(error.message); setLoading(false); }
-    // Supabase redirects to Google → comes back → App useEffect picks up session
   };
 
   const handleSubmit = async () => {
@@ -464,7 +463,7 @@ function Auth({ onAuth }) {
       // Save extra profile info
       if (data.user) {
         await upsertProfile(data.user.id, { full_name:form.name, age:parseInt(form.age), grade:form.grade });
-        onAuth(data.user, { name:form.name, age:form.age, grade:form.grade }, false);
+        onAuth(data.user, { full_name:form.name, age:form.age, grade:form.grade }, false);
       }
     } else {
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -521,6 +520,100 @@ function Auth({ onAuth }) {
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── ROADMAP LOADER ────────────────────────────────────────────────────────────
+const LOADING_STEPS = [
+  { icon:"🧙‍♂️", text:"Professor CodeWizard is reviewing your goals…" },
+  { icon:"🗺️", text:"Mapping out your 6-month journey…" },
+  { icon:"📅", text:"Scheduling daily tasks just for you…" },
+  { icon:"🧪", text:"Preparing weekly tests and challenges…" },
+  { icon:"⚡", text:"Adding secret professor tips…" },
+  { icon:"✨", text:"Putting the final touches on your roadmap…" },
+];
+function RoadmapLoader() {
+  const [step, setStep] = useState(0);
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const stepInterval = setInterval(() => {
+      setStep(s => s < LOADING_STEPS.length - 1 ? s + 1 : s);
+    }, 3500);
+    const progInterval = setInterval(() => {
+      setProgress(p => p < 95 ? p + 1 : p);
+    }, 220);
+    return () => { clearInterval(stepInterval); clearInterval(progInterval); };
+  }, []);
+
+  return (
+    <div style={{
+      minHeight:"100vh", display:"flex", flexDirection:"column",
+      alignItems:"center", justifyContent:"center", padding:"40px 20px",
+      background:"var(--paper)", textAlign:"center"
+    }}>
+      <div style={{
+        width:100, height:100, borderRadius:"50%",
+        background:"linear-gradient(135deg,var(--gold-light),var(--gold))",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        fontSize:52, marginBottom:32,
+        boxShadow:"0 8px 40px rgba(201,168,76,.4)",
+        animation:"pulse-gold 2s infinite"
+      }}>
+        {LOADING_STEPS[step].icon}
+      </div>
+
+      <h2 style={{fontSize:26, marginBottom:12, fontFamily:"var(--font-display)"}}>
+        Building Your Roadmap
+      </h2>
+
+      <p style={{
+        color:"var(--smoke)", fontSize:16, maxWidth:340,
+        marginBottom:36, lineHeight:1.6, minHeight:52,
+        transition:"all .4s ease"
+      }}>
+        {LOADING_STEPS[step].text}
+      </p>
+
+      {/* Progress bar */}
+      <div style={{width:"100%", maxWidth:360, marginBottom:12}}>
+        <div style={{
+          background:"var(--pearl)", borderRadius:999, height:8, overflow:"hidden"
+        }}>
+          <div style={{
+            height:"100%", borderRadius:999,
+            background:"linear-gradient(90deg,var(--gold),#E8C97A)",
+            width:`${progress}%`, transition:"width .3s ease"
+          }}/>
+        </div>
+        <div style={{
+          display:"flex", justifyContent:"space-between",
+          marginTop:8, fontSize:13, color:"var(--mist)"
+        }}>
+          <span>Generating with AI…</span>
+          <span style={{fontWeight:700, color:"var(--gold2)"}}>{progress}%</span>
+        </div>
+      </div>
+
+      {/* Step dots */}
+      <div style={{display:"flex", gap:8, marginTop:16}}>
+        {LOADING_STEPS.map((_, i) => (
+          <div key={i} style={{
+            width: i === step ? 24 : 8,
+            height:8, borderRadius:999,
+            background: i <= step ? "var(--gold)" : "var(--pearl)",
+            transition:"all .4s ease"
+          }}/>
+        ))}
+      </div>
+
+      <p style={{
+        marginTop:32, fontSize:13, color:"var(--mist)",
+        fontStyle:"italic"
+      }}>
+        This takes about 20–30 seconds ☕ Grab a sip of water!
+      </p>
     </div>
   );
 }
@@ -588,13 +681,7 @@ Include all 6 months with 4 weeks each. Tasks must be friendly, specific, encour
     setLoading(false);
   };
 
-  if (loading) return (
-    <div style={{textAlign:"center",padding:"100px 20px"}}>
-      <div style={{fontSize:56,marginBottom:20}}>🧙‍♂️</div>
-      <div className="dots"><span/><span/><span/></div>
-      <p style={{color:"var(--mid)",marginTop:16,fontStyle:"italic"}}>AI is crafting your personalized 6-month roadmap…</p>
-    </div>
-  );
+  if (loading) return <RoadmapLoader />;
 
   const name = profile?.full_name || user?.user_metadata?.full_name || "there";
 
@@ -1429,11 +1516,16 @@ export default function App() {
     }
   };
 
-  const onAuth = (authUser, prof, existing) => {
+  const onAuth = async (authUser, prof, hasExistingRoadmap) => {
     setUser(authUser);
     setProfile(prof);
-    if (existing && roadmap) setPage("dashboard");
-    else setPage("onboard");
+    if (hasExistingRoadmap) {
+      // Existing user logging in — load their full data
+      await loadUserData(authUser);
+    } else {
+      // New signup — go to onboarding
+      setPage("onboard");
+    }
   };
 
   const logout = async () => {
