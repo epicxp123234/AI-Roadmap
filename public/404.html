@@ -1,15 +1,14 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <script>
-      // GitHub Pages SPA redirect fix for Supabase OAuth
-      const hash = window.location.hash;
-      if (hash && hash.includes('access_token')) {
-        window.location.replace('https://epicxp123234.github.io/AI-Roadmap/' + hash);
-      } else {
-        window.location.replace('https://epicxp123234.github.io/AI-Roadmap/');
-      }
-    </script>
-  </head>
-  <body></body>
+<head>
+<script>
+  var hash = window.location.hash;
+  if (hash && hash.includes('access_token')) {
+    window.location.replace('https://epicxp123234.github.io/AI-Roadmap/' + hash);
+  } else {
+    window.location.replace('https://epicxp123234.github.io/AI-Roadmap/');
+  }
+</script>
+</head>
+<body></body>
 </html>
