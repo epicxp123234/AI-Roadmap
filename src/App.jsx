@@ -14,13 +14,24 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 async function askClaude(messages, system = "", maxTokens = 2000) {
   const body = { model:"claude-sonnet-4-20250514", max_tokens:maxTokens, messages };
   if (system) body.system = system;
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify(body),
-  });
-  const data = await res.json();
-  return data.content?.[0]?.text ?? "";
+  
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25000); // 25 second timeout
+  
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(body),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    const data = await res.json();
+    return data.content?.[0]?.text ?? "";
+  } catch(e) {
+    clearTimeout(timeout);
+    throw e;
+  }
 }
 
 // ── Supabase DB helpers ───────────────────────────────────────────────────────
@@ -665,13 +676,12 @@ Include all 6 months with 4 weeks each. Tasks must be friendly, specific, encour
     try {
       const raw = await askClaude([{role:"user",content:prompt}], "", 4000);
       const roadmap = JSON.parse(raw.replace(/```json|```/g,"").trim());
-      // Save to Supabase
       await upsertRoadmap(user.id, roadmap, { career:form.career, level:form.level, daily_time:form.time, goal:form.goal });
       const initProgress = { current_month:1, current_week:1, current_day:1, streak:0, completed_days:[], last_visit:new Date().toISOString().slice(0,10) };
       await upsertProgress(user.id, initProgress);
       onDone(roadmap, dbToProgress(initProgress));
     } catch(e) {
-      console.error(e);
+      // Timeout or parse error — use fallback immediately
       const fallback = buildFallback(form);
       await upsertRoadmap(user.id, fallback, { career:form.career, level:form.level, daily_time:form.time, goal:form.goal });
       const initProgress = { current_month:1, current_week:1, current_day:1, streak:0, completed_days:[], last_visit:new Date().toISOString().slice(0,10) };
