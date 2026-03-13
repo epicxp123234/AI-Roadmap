@@ -11,9 +11,12 @@ const SUPABASE_ANON = "sb_publishable_xcwOjTEqwOgX6VHhB2krTA_YI1Swr5_";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 
 // ── Claude AI helper ─────────────────────────────────────────────────────────
-const ANTHROPIC_KEY = import.meta.env.VITE_ANTHROPIC_KEY;
+const ANTHROPIC_KEY = "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";
 
 async function askClaude(messages, system = "", maxTokens = 2000) {
+  const key = import.meta.env.VITE_ANTHROPIC_KEY;
+  console.log("API Key loaded:", key ? "YES (length: " + key.length + ")" : "NO - KEY IS MISSING!");
+  
   const body = { model:"claude-sonnet-4-20250514", max_tokens:maxTokens, messages };
   if (system) body.system = system;
   
@@ -21,12 +24,17 @@ async function askClaude(messages, system = "", maxTokens = 2000) {
     method:"POST",
     headers:{
       "Content-Type":"application/json",
-      "x-api-key": ANTHROPIC_KEY,
+      "x-api-key": key,
       "anthropic-version": "2023-06-01",
       "anthropic-dangerous-direct-browser-access": "true",
     },
     body:JSON.stringify(body),
-  }).then(r => r.json()).then(data => data.content?.[0]?.text ?? "");
+  }).then(async r => {
+    const data = await r.json();
+    console.log("API response status:", r.status);
+    if(data.error) console.error("API error:", data.error);
+    return data.content?.[0]?.text ?? "";
+  });
 
   const timeoutPromise = new Promise((_, reject) => 
     setTimeout(() => reject(new Error("timeout")), 30000)
