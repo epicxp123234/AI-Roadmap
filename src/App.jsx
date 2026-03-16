@@ -405,7 +405,10 @@ function EmailSettingsModal({ onClose, userEmail, userName }) {
 function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, emailConfigured }) {
   return (
     <nav className="nav">
-      <span className="nav-logo">✦ RoadmapAI</span>
+      <div style={{display:"flex",flexDirection:"column",lineHeight:1.1}}>
+        <span className="nav-logo">✦ RoadmapAI</span>
+        <span style={{fontSize:10,color:"var(--smoke)",letterSpacing:.5,fontFamily:"var(--font-body)",fontWeight:500}}>Turn any interest into a clear learning path</span>
+      </div>
       {user && (
         <div className="row gap-12" style={{flexWrap:"wrap"}}>
           {["dashboard","learn","test"].map(p=>(
@@ -436,16 +439,30 @@ function Landing({ onStart }) {
   return (
     <div className="page hero">
       <div className="hero-badge"><span/> Free for students aged 13–18</div>
-      <h1>Your Personal<br/><span>AI-Powered Career</span><br/>Roadmap Awaits</h1>
-      <p>A six-month learning plan crafted just for you. Daily lessons, weekly tests, and a streak system to keep you moving forward.</p>
-      <button className="btn-primary" style={{marginTop:40,fontSize:16,padding:"16px 44px",borderRadius:12}} onClick={onStart}>Begin Your Journey →</button>
+      <h1>Turn Any Interest Into<br/><span>A Clear Learning Path</span></h1>
+      <p style={{marginTop:16,fontSize:17,color:"var(--smoke)",maxWidth:480,lineHeight:1.7}}>
+        Chess. Coding. Art. Entrepreneurship. Whatever you want to learn —
+        RoadmapAI builds you a personal 6-month plan with daily lessons, weekly tests, and an AI professor by your side.
+      </p>
+      {/* Core promise pill */}
+      <div style={{
+        display:"inline-flex", alignItems:"center", gap:10,
+        background:"linear-gradient(135deg,var(--ink),#1A1A2E)",
+        border:"1px solid rgba(201,168,76,.3)",
+        borderRadius:999, padding:"10px 22px", marginTop:24,
+        fontSize:14, color:"var(--gold-light)", fontWeight:600, letterSpacing:.3
+      }}>
+        <span style={{fontSize:16}}>✦</span>
+        "Turn any interest into a clear learning path."
+      </div>
+      <button className="btn-primary" style={{marginTop:28,fontSize:16,padding:"16px 44px",borderRadius:12}} onClick={onStart}>Build My Roadmap →</button>
       <div className="feature-grid">
         {[
-          {icon:"📅",title:"Daily Tasks",desc:"Clear, actionable tasks every single day"},
-          {icon:"🧠",title:"AI Doubt Solver",desc:"Ask anything, get simple explanations"},
-          {icon:"📊",title:"Progress Tracking",desc:"See how far you've come at a glance"},
-          {icon:"📝",title:"Weekly Tests",desc:"MCQs with instant feedback & scores"},
-          {icon:"🎯",title:"Goal-Based Plan",desc:"Job-ready or foundation tracks"},
+          {icon:"🎯",title:"Any Interest",desc:"Chess, coding, art, business — you name it, we map it"},
+          {icon:"📅",title:"Daily Lessons",desc:"5 focused lectures every day, never overwhelming"},
+          {icon:"🧠",title:"AI Professor",desc:"Ask anything, get instant clear explanations"},
+          {icon:"📝",title:"Weekly Tests",desc:"50 MCQs with instant feedback & scores"},
+          {icon:"📊",title:"Progress Tracking",desc:"See exactly how far you've come"},
           {icon:"🔥",title:"Streak System",desc:"Stay motivated with daily streaks"},
         ].map(f=>(
           <div className="feature-card" key={f.title}>
@@ -699,8 +716,8 @@ Generate ALL 6 months with ALL 4 weeks each.`;
           <p style={{color:"var(--smoke)",fontSize:14,marginTop:4}}>Tell us a bit more so we can build the perfect roadmap for you.</p>
         </div>
         <div className="stack gap-20">
-          <div className="field"><label>What do you want to learn or become?</label>
-            <input placeholder="e.g. Web Developer, AI Engineer, Graphic Designer, Chess..." value={form.career} onChange={e=>set("career",e.target.value)}/>
+          <div className="field"><label>What do you want to learn? (anything!)</label>
+            <input placeholder="e.g. Chess, Web Dev, Digital Art, Music Production, Entrepreneurship…" value={form.career} onChange={e=>set("career",e.target.value)}/>
           </div>
           <div className="field"><label>Current skill level</label>
             <select value={form.level} onChange={e=>set("level",e.target.value)}>
