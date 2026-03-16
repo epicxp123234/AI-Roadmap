@@ -10,7 +10,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 
 // ── Claude AI helper ─────────────────────────────────────────────────────────
 async function askClaude(messages, system = "", maxTokens = 2000) {
-  const key = import.meta.env.VITE_GEMINI_KEY || "AIzaSyB_i7AfBJ_dtruQDEIrsBGT2qvUK0JpWPI";
+  const key = import.meta.env.VITE_GEMINI_KEY || "AIzaSyC_wt09TtmGRrGdEao-twMjrJI8uFCABgw";
 
   const parts = [];
   if(system) parts.push({ text: "SYSTEM INSTRUCTIONS:\n" + system + "\n\n" });
