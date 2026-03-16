@@ -10,8 +10,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 
 // ── Claude AI helper ─────────────────────────────────────────────────────────
 async function askClaude(messages, system = "", maxTokens = 2000) {
-  const key = import.meta.env.VITE_GEMINI_KEY;
-  if(!key) { console.error("GEMINI KEY MISSING"); return ""; }
+  const key = import.meta.env.VITE_GEMINI_KEY || "AIzaSyB_i7AfBJ_dtruQDEIrsBGT2qvUK0JpWPI";
 
   const parts = [];
   if(system) parts.push({ text: "SYSTEM INSTRUCTIONS:\n" + system + "\n\n" });
@@ -63,7 +62,10 @@ async function getProgress(userId) {
   return data;
 }
 async function upsertProgress(userId, fields) {
-  await supabase.from("progress").upsert({ user_id: userId, ...fields, updated_at: new Date().toISOString() });
+  await supabase.from("progress").upsert(
+    { user_id: userId, ...fields, updated_at: new Date().toISOString() },
+    { onConflict: "user_id" }
+  );
 }
 async function saveTaskSubmission(userId, data) {
   await supabase.from("task_submissions").upsert({
