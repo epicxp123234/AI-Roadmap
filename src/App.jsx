@@ -991,7 +991,7 @@ function Learn({ progress, roadmap, onUpdateProgress, user }) {
       music: ["Music Theory Basics","Reading Sheet Music","Rhythm & Time Signatures","Scales & Keys","Chords & Harmony","Melody Writing","Song Structure","Ear Training","Instrument Technique","Recording Basics","Music Production","Genre Exploration","Performance Tips","Collaboration","Building Your Audience"],
     };
 
-    const lc = roadmap.title.toLowerCase();
+    let lc = roadmap.title.toLowerCase();
     let subTopics = null;
     for(const [key, val] of Object.entries(careerSubTopics)) {
       if(lc.includes(key)) { subTopics = val; break; }
