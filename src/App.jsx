@@ -10,7 +10,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 
 // ── Claude AI helper ─────────────────────────────────────────────────────────
 async function askClaude(messages, system = "", maxTokens = 2000) {
-  const key = import.meta.env.VITE_GEMINI_KEY || "AIzaSyC_wt09TtmGRrGdEao-twMjrJI8uFCABgw";
+  
 
   const parts = [];
   if(system) parts.push({ text: "SYSTEM INSTRUCTIONS:\n" + system + "\n\n" });
@@ -22,13 +22,28 @@ async function askClaude(messages, system = "", maxTokens = 2000) {
   };
 
   const fetchPromise = fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
-    { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) }
-  ).then(async r => {
-    const data = await r.json();
-    if(data.error) { console.error("Gemini error:", data.error); return ""; }
-    return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-  });
+  "https://knqclhfxhkishaivowhe.supabase.co/functions/v1/ask-doubt",
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      question: body.contents[0].parts[0].text,
+    }),
+  }
+).then(async (r) => {
+  const data = await r.json();
+
+  if (data.error) {
+    console.error("Backend error:", data.error);
+    return "";
+  }
+
+  return (
+    data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response"
+  );
+});
 
   const timeoutPromise = new Promise((_, reject) =>
     setTimeout(() => reject(new Error("timeout")), 30000)
