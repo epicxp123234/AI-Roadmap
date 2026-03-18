@@ -10,40 +10,33 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 
 // ── Claude AI helper ─────────────────────────────────────────────────────────
 async function askClaude(messages, system = "", maxTokens = 2000) {
-  
 
-  const parts = [];
-  if(system) parts.push({ text: "SYSTEM INSTRUCTIONS:\n" + system + "\n\n" });
-  messages.forEach(m => parts.push({ text: (m.role === "user" ? "User: " : "Assistant: ") + m.content }));
-
-  const body = {
-    contents: [{ role: "user", parts }],
-    generationConfig: { maxOutputTokens: maxTokens, temperature: 0.85 }
-  };
+  // ✅ Extract ONLY the user's actual question
+  const userMessage = messages.find(m => m.role === "user")?.content || "";
 
   const fetchPromise = fetch(
-  "https://knqclhfxhkishaivowhe.supabase.co/functions/v1/ask-doubt",
-  {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      question: body.contents[0].parts[0].text,
-    }),
-  }
-).then(async (r) => {
-  const data = await r.json();
+    "https://knqclhfxhkishaivowhe.supabase.co/functions/v1/ask-doubt",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        question: userMessage, // ✅ clean input
+      }),
+    }
+  ).then(async (r) => {
+    const data = await r.json();
 
-  if (data.error) {
-    console.error("Backend error:", data.error);
-    return "";
-  }
+    if (data.error) {
+      console.error("Backend error:", data.error);
+      return "";
+    }
 
-  return (
-    data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response"
-  );
-});
+    return (
+      data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response"
+    );
+  });
 
   const timeoutPromise = new Promise((_, reject) =>
     setTimeout(() => reject(new Error("timeout")), 30000)
@@ -1064,30 +1057,27 @@ Return ONLY valid JSON, no markdown, no extra text:
   };
 
   const submitDoubt = async () => {
-    if(!doubt.trim()) return;
-    setLoadingDoubt(true);
-    setAnswer("");
-    try {
-      const res = await askClaude([{role:"user", content:
-        `STUDENT CONTEXT:
-- Learning: "${roadmap.title}"
-- Currently on: Month ${currentMonth}, Week ${currentWeek}, Day ${currentDay}
-- This week's topic: "${weekTopic}"
-- Their question: "${doubt}"
+  if (!doubt.trim()) return;
 
-Answer this question as Professor Max. Rules:
-- Get straight to the answer — no filler
-- Use one killer analogy specific to ${roadmap.title}
-- Keep it under 180 words but make every word count
-- End with one actionable thing they can do RIGHT NOW`
-      }], PROFESSOR_SYSTEM, 1000);
-      setAnswer(res && res.trim().length > 10 ? res : `Hmm, my signal's a bit weak right now! Try asking again in a moment. 🧙‍♂️`);
-    } catch(e) {
-      setAnswer("My crystal ball is foggy right now! Check your internet and try again. 🔮");
-    }
-    setLoadingDoubt(false);
-    setDoubt("");
-  };
+  setLoadingDoubt(true);
+  setAnswer("");
+
+  try {
+    const answer = await askDoubt(doubt); // ✅ THIS is your backend call
+
+    setAnswer(
+      answer && answer.trim().length > 10
+        ? answer
+        : "Hmm, my signal's a bit weak right now! Try again in a moment. 🧙‍♂️"
+    );
+
+  } catch (e) {
+    setAnswer("My crystal ball is foggy right now! Check your internet and try again. 🔮");
+  }
+
+  setLoadingDoubt(false);
+  setDoubt("");
+};
 
   const markDone = () => {
     setDayDone(true);
