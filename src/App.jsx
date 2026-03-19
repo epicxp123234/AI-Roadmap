@@ -22,7 +22,7 @@ async function askClaude(messages, system = "", maxTokens = 2000) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        question: userMessage, // ✅ clean input
+        question: userMessage,
       }),
     }
   ).then(async (r) => {
@@ -33,9 +33,7 @@ async function askClaude(messages, system = "", maxTokens = 2000) {
       return "";
     }
 
-    return (
-      data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response"
-    );
+    return data.answer || "No response"; // ✅ FIXED
   });
 
   const timeoutPromise = new Promise((_, reject) =>
@@ -1055,21 +1053,29 @@ Return ONLY valid JSON, no markdown, no extra text:
     setLectures(fallbackLectures);
     setLoading(false);
   };
-
-  const submitDoubt = async () => {
+const submitDoubt = async () => {
+  // ✅ prevent empty input
   if (!doubt.trim()) return;
+
+  // ✅ prevent multiple clicks / spam (VERY IMPORTANT)
+  if (loadingDoubt) return;
 
   setLoadingDoubt(true);
   setAnswer("");
 
   try {
-    const answer = await askDoubt(doubt); // ✅ THIS is your backend call
+    const answer = await askDoubt(doubt);
 
-    setAnswer(
-      answer && answer.trim().length > 10
-        ? answer
-        : "Hmm, my signal's a bit weak right now! Try again in a moment. 🧙‍♂️"
-    );
+    // ✅ handle backend errors (like 429, 500)
+    if (!answer || answer.includes("error")) {
+      setAnswer("Too many students are asking right now 😅 Try again in a few seconds.");
+    } else {
+      setAnswer(
+        answer.trim().length > 10
+          ? answer
+          : "Hmm, my signal's a bit weak right now! Try again in a moment. 🧙‍♂️"
+      );
+    }
 
   } catch (e) {
     setAnswer("My crystal ball is foggy right now! Check your internet and try again. 🔮");

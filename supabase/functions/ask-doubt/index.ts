@@ -1,16 +1,15 @@
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { serve } from "https://deno.land/std/http/server.ts";
 
 serve(async (req) => {
+  // ✅ CORS headers (CRITICAL)
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  };
 
-  // ✅ Handle preflight (VERY IMPORTANT)
+  // ✅ Handle preflight request
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
-      },
-    });
+    return new Response("ok", { headers: corsHeaders });
   }
 
   try {
@@ -18,8 +17,11 @@ serve(async (req) => {
 
     const apiKey = Deno.env.get("GEMINI_API_KEY");
 
+    // ⏳ Small delay (prevents rate spam)
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: {
@@ -28,7 +30,7 @@ serve(async (req) => {
         body: JSON.stringify({
           contents: [
             {
-              parts: [{ text: 'Answer Briefly: ${question}' }],
+              parts: [{ text: question }],
             },
           ],
         }),
@@ -37,21 +39,37 @@ serve(async (req) => {
 
     const data = await response.json();
 
-    return new Response(JSON.stringify(data), {
-      headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*", // ✅ REQUIRED
-      },
+    // ❌ Handle API errors cleanly
+    if (data.error) {
+      return new Response(
+        JSON.stringify({
+          answer: "⚠️ AI is busy. Try again in a few seconds.",
+          error: data.error,
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        }
+      );
+    }
+
+    const answer =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "No response from AI";
+
+    return new Response(JSON.stringify({ answer }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
   } catch (err) {
     return new Response(
-      JSON.stringify({ error: "Something went wrong" }),
+      JSON.stringify({
+        answer: "Server error. Try again.",
+        error: err.message,
+      }),
       {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 500,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-        },
       }
     );
   }
