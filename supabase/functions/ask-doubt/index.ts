@@ -17,9 +17,6 @@ serve(async (req) => {
 
     const apiKey = Deno.env.get("GEMINI_API_KEY");
 
-    // ⏳ Small delay (prevents rate spam)
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
@@ -33,14 +30,23 @@ serve(async (req) => {
               parts: [{ text: question }],
             },
           ],
+          generationConfig: {
+            temperature: 0.9,
+            maxOutputTokens: 4096,
+          },
         }),
       }
     );
 
     const data = await response.json();
 
+    // 🔍 Debug log — check Supabase Edge Function logs if AI fails
+    console.log("Gemini status:", response.status);
+    console.log("Gemini response:", JSON.stringify(data).slice(0, 500));
+
     // ❌ Handle API errors cleanly
     if (data.error) {
+      console.error("Gemini API error:", data.error);
       return new Response(
         JSON.stringify({
           answer: "⚠️ AI is busy. Try again in a few seconds.",
@@ -55,6 +61,8 @@ serve(async (req) => {
 
     const answer =
       data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      data?.candidates?.[0]?.output ||
+      data?.text ||
       "No response from AI";
 
     return new Response(JSON.stringify({ answer }), {
@@ -62,6 +70,7 @@ serve(async (req) => {
     });
 
   } catch (err) {
+    console.error("Server error:", err.message);
     return new Response(
       JSON.stringify({
         answer: "Server error. Try again.",
