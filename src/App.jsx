@@ -6,7 +6,9 @@ import { createClient } from "@supabase/supabase-js";
 // ─────────────────────────────────────────────────────────────────────────────
 const SUPABASE_URL  = "https://knqclhfxhkishaivowhe.supabase.co";
 const SUPABASE_ANON = "sb_publishable_xcwOjTEqwOgX6VHhB2krTA_YI1Swr5_";
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON, {
+  auth: { lock: false }
+});
 
 // ── Claude AI helper ─────────────────────────────────────────────────────────
 async function askClaude(messages, system = "", maxTokens = 2000) {
@@ -33,7 +35,7 @@ async function askClaude(messages, system = "", maxTokens = 2000) {
       return "";
     }
 
-    return data.answer || "No response"; // ✅ FIXED
+    return data.answer || "No response";
   });
 
   const timeoutPromise = new Promise((_, reject) =>
@@ -41,6 +43,11 @@ async function askClaude(messages, system = "", maxTokens = 2000) {
   );
 
   return Promise.race([fetchPromise, timeoutPromise]);
+}
+
+// ── askDoubt helper (used in Learn page) ─────────────────────────────────────
+async function askDoubt(question) {
+  return askClaude([{ role: "user", content: question }], PROFESSOR_SYSTEM, 1000);
 }
 
 // ── Supabase DB helpers ───────────────────────────────────────────────────────
@@ -112,11 +119,19 @@ function progressToDb(p) {
 }
 
 // ── EmailJS streak reminder ───────────────────────────────────────────────────
-const EJS = {
-  serviceId:  localStorage.getItem("ejs_service")  || "",
-  templateId: localStorage.getItem("ejs_template") || "",
-  publicKey:  localStorage.getItem("ejs_key")      || "",
-};
+function getEJS() {
+  try {
+    return {
+      serviceId:  localStorage.getItem("ejs_service")  || "",
+      templateId: localStorage.getItem("ejs_template") || "",
+      publicKey:  localStorage.getItem("ejs_key")      || "",
+    };
+  } catch(e) {
+    return { serviceId: "", templateId: "", publicKey: "" };
+  }
+}
+const EJS = getEJS();
+
 async function sendStreakLostEmail(userName, userEmail, streak) {
   if (!EJS.serviceId || !EJS.templateId || !EJS.publicKey) return false;
   try {
@@ -452,7 +467,6 @@ function Landing({ onStart }) {
         Chess. Coding. Art. Entrepreneurship. Whatever you want to learn —
         RoadmapAI builds you a personal 6-month plan with daily lessons, weekly tests, and an AI professor by your side.
       </p>
-      {/* Core promise pill */}
       <div style={{
         display:"inline-flex", alignItems:"center", gap:10,
         background:"linear-gradient(135deg,var(--ink),#1A1A2E)",
@@ -493,9 +507,12 @@ function Auth({ onAuth }) {
 
   const handleGoogle = async () => {
     setLoading(true); setErr("");
+    const redirectTo = window.location.hostname === "localhost"
+      ? "http://localhost:5173"
+      : "https://velorn.vercel.app";
     const { error } = await supabase.auth.signInWithOAuth({
       provider:"google",
-      options:{ redirectTo: "https://epicxp123234.github.io/AI-Roadmap/" }
+      options:{ redirectTo }
     });
     if (error) { setErr(error.message); setLoading(false); }
   };
@@ -943,7 +960,6 @@ function Learn({ progress, roadmap, onUpdateProgress, user }) {
     loadLectures();
   }, [currentMonth, currentWeek, currentDay]);
 
-  // ── THE KEY CHANGE: 5 lectures per day, fully AI-generated, career-specific ──
   const loadLectures = async () => {
     setLoading(true);
 
@@ -1030,7 +1046,6 @@ Return ONLY valid JSON, no markdown, no extra text:
       }
     } catch { /* fall through to fallback */ }
 
-    // Fallback: 5 career-specific lectures if AI fails
     const hooks = [
       `Here's a shocking fact almost nobody knows about ${weekTopic}:`,
       `Picture this scenario — you're three months into learning ${roadmap.title} and suddenly everything clicks. What changed?`,
@@ -1053,37 +1068,25 @@ Return ONLY valid JSON, no markdown, no extra text:
     setLectures(fallbackLectures);
     setLoading(false);
   };
-const submitDoubt = async () => {
-  // ✅ prevent empty input
-  if (!doubt.trim()) return;
 
-  // ✅ prevent multiple clicks / spam (VERY IMPORTANT)
-  if (loadingDoubt) return;
-
-  setLoadingDoubt(true);
-  setAnswer("");
-
-  try {
-    const answer = await askDoubt(doubt);
-
-    // ✅ handle backend errors (like 429, 500)
-    if (!answer || answer.includes("error")) {
-      setAnswer("Too many students are asking right now 😅 Try again in a few seconds.");
-    } else {
-      setAnswer(
-        answer.trim().length > 10
-          ? answer
-          : "Hmm, my signal's a bit weak right now! Try again in a moment. 🧙‍♂️"
-      );
+  const submitDoubt = async () => {
+    if (!doubt.trim()) return;
+    if (loadingDoubt) return;
+    setLoadingDoubt(true);
+    setAnswer("");
+    try {
+      const res = await askDoubt(doubt);
+      if (!res || res.includes("error")) {
+        setAnswer("Too many students are asking right now 😅 Try again in a few seconds.");
+      } else {
+        setAnswer(res.trim().length > 10 ? res : "Hmm, my signal's a bit weak right now! Try again in a moment. 🧙‍♂️");
+      }
+    } catch (e) {
+      setAnswer("My crystal ball is foggy right now! Check your internet and try again. 🔮");
     }
-
-  } catch (e) {
-    setAnswer("My crystal ball is foggy right now! Check your internet and try again. 🔮");
-  }
-
-  setLoadingDoubt(false);
-  setDoubt("");
-};
+    setLoadingDoubt(false);
+    setDoubt("");
+  };
 
   const markDone = () => {
     setDayDone(true);
@@ -1194,7 +1197,6 @@ const submitDoubt = async () => {
   return (
     <div className="page container" style={{paddingTop:24,paddingBottom:60}}>
 
-      {/* Header */}
       <div style={{
         background:"linear-gradient(135deg,var(--ink),#1A1A2E)",
         borderRadius:16, padding:"20px 24px", marginBottom:24,
@@ -1213,7 +1215,6 @@ const submitDoubt = async () => {
       {lectures && (
         <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
 
-          {/* Sidebar */}
           <div style={{width:"100%",maxWidth:260,flexShrink:0}}>
             <div className="card" style={{padding:12}}>
               <p style={{fontWeight:700,fontSize:13,marginBottom:10,color:"var(--smoke)",textTransform:"uppercase",letterSpacing:1}}>
@@ -1237,7 +1238,6 @@ const submitDoubt = async () => {
             </div>
           </div>
 
-          {/* Main lecture area */}
           <div style={{flex:1,minWidth:280}}>
             <div className="card">
               <div style={{
@@ -1270,7 +1270,6 @@ const submitDoubt = async () => {
                 </p>
               </div>
 
-              {/* Homework on lecture 5 */}
               {lectures[activeLecture].homework && (
                 <div style={{
                   background:"linear-gradient(135deg,#F0FDF4,#DCFCE7)",
@@ -1297,7 +1296,6 @@ const submitDoubt = async () => {
                 </div>
               )}
 
-              {/* Navigation */}
               <div style={{display:"flex",gap:10,justifyContent:"space-between"}}>
                 <button className="btn-outline" onClick={()=>setActiveLecture(a=>Math.max(0,a-1))}
                   disabled={activeLecture===0} style={{flex:1}}>
@@ -1318,7 +1316,6 @@ const submitDoubt = async () => {
               </div>
             </div>
 
-            {/* Progress bar */}
             <div style={{marginTop:12,marginBottom:24}}>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"var(--mist)",marginBottom:6}}>
                 <span>Today's Progress</span>
@@ -1334,7 +1331,6 @@ const submitDoubt = async () => {
               </div>
             </div>
 
-            {/* Ask Professor */}
             <div className="card" style={{borderTop:"3px solid var(--gold)"}}>
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
                 <span style={{fontSize:24}}>🧙‍♂️</span>
@@ -1371,7 +1367,6 @@ const submitDoubt = async () => {
         </div>
       )}
 
-      {/* ── DAILY PRACTICAL TASK ── */}
       {showTask && lectures && (() => {
         const task = getWeeklyTask();
         return (
@@ -1423,7 +1418,6 @@ const submitDoubt = async () => {
                   </div>
                 ))}
 
-                {/* Task doubt box */}
                 <div className="card" style={{borderTop:"3px solid #7C3AED"}}>
                   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
                     <span style={{fontSize:22}}>🧙‍♂️</span>
@@ -1766,7 +1760,9 @@ export default function App() {
   const [roadmap,  setRoadmap]  = useState(null);
   const [progress, setProgress] = useState(null);
   const [showEmailSettings, setShowEmailSettings] = useState(false);
-  const [emailConfigured,   setEmailConfigured]   = useState(!!(localStorage.getItem("ejs_service")&&localStorage.getItem("ejs_key")));
+  const [emailConfigured,   setEmailConfigured]   = useState(()=>{
+    try { return !!(localStorage.getItem("ejs_service")&&localStorage.getItem("ejs_key")); } catch { return false; }
+  });
   const [streakAlert, setStreakAlert] = useState(null);
 
   useEffect(()=>{
@@ -1876,7 +1872,7 @@ export default function App() {
 
       {showEmailSettings && (
         <EmailSettingsModal
-          onClose={()=>{ setShowEmailSettings(false); setEmailConfigured(!!(localStorage.getItem("ejs_service")&&localStorage.getItem("ejs_key"))); }}
+          onClose={()=>{ setShowEmailSettings(false); try { setEmailConfigured(!!(localStorage.getItem("ejs_service")&&localStorage.getItem("ejs_key"))); } catch {} }}
           userEmail={user?.email}
           userName={profile?.full_name||user?.user_metadata?.full_name}
         />
