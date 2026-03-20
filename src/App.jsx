@@ -1537,10 +1537,10 @@ function WeeklyTest({ progress, roadmap }) {
 
     let allQuestions = [];
     try {
-      const makePrompt = (batch) => `You are creating a weekly test for a student learning "${roadmap.title}".
-Week topic: "${topic}" | Batch ${batch} of 2 (make these 25 questions DIFFERENT from batch ${batch===1?2:1})
+      const prompt = `You are creating a weekly test for a student learning "${roadmap.title}".
+Week topic: "${topic}"
 
-Generate 25 multiple choice questions. STRICT RULES:
+Generate exactly 25 multiple choice questions. STRICT RULES:
 1. ALL questions must be 100% specific to "${roadmap.title}"
 2. Mix difficulty: 8 easy, 12 medium, 5 hard
 3. Test UNDERSTANDING, not just memory
@@ -1560,15 +1560,10 @@ Return ONLY valid JSON (no markdown):
   ]
 }`;
 
-      const [raw1, raw2] = await Promise.all([
-        askClaude([{role:"user",content:makePrompt(1)}], "", 3000),
-        askClaude([{role:"user",content:makePrompt(2)}], "", 3000),
-      ]);
-
-      const d1 = JSON.parse(raw1.replace(/```json|```/g,"").trim());
-      const d2 = JSON.parse(raw2.replace(/```json|```/g,"").trim());
-      allQuestions = [...d1.questions, ...d2.questions].slice(0, 50);
-    } catch {
+      const raw = await askClaude([{role:"user", content: prompt}], "", 3000);
+      const d = JSON.parse(raw.replace(/```json|```/g,"").trim());
+      allQuestions = d.questions.slice(0, 25);
+    }catch {
       allQuestions = Array.from({length:50}, (_,i) => ({
         q: `Question ${i+1}: What is an important concept in ${topic}?`,
         options: ["A) Option A","B) Option B","C) Option C","D) Option D"],
