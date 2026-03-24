@@ -11,43 +11,47 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON, {
 });
 
 // ── Claude AI helper ─────────────────────────────────────────────────────────
-async function askClaude(messages, system = "", maxTokens = 2000) {
+async function askClaude(input) {
+  try {
+    const userMessage =
+      typeof input === "string"
+        ? input
+        : input?.find(m => m.role === "user")?.content || "";
 
-  // ✅ Extract ONLY the user's actual question
-  const userMessage = messages.find(m => m.role === "user")?.content || "";
-
-  const fetchPromise = fetch(
-    "https://knqclhfxhkishaivowhe.supabase.co/functions/v1/ask-doubt",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        question: userMessage,
-      }),
-    }
-  ).then(async (r) => {
-    const data = await r.json();
-
-    if (data.error) {
-      console.error("Backend error:", data.error);
+    if (!userMessage.trim()) {
+      console.warn("Empty question");
       return "";
     }
 
-    return data.answer || "No response";
-  });
+    const res = await fetch(
+      "https://knqclhfxhkishaivowhe.supabase.co/functions/v1/ask-doubt",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_ANON,
+          "Authorization": `Bearer ${SUPABASE_ANON}`,
+        },
+        body: JSON.stringify({
+          question: userMessage,
+        }),
+      }
+    );
 
-  const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error("timeout")), 30000)
-  );
+    if (!res.ok) {
+      console.error("HTTP error:", res.status);
+      return "";
+    }
 
-  return Promise.race([fetchPromise, timeoutPromise]);
-}
+    const data = await res.json();
+    console.log("✅ FULL BACKEND RESPONSE:", data);
 
-// ── askDoubt helper (used in Learn page) ─────────────────────────────────────
-async function askDoubt(question) {
-  return askClaude([{ role: "user", content: question }], PROFESSOR_SYSTEM, 1000);
+    return (data?.answer || "").trim();
+
+  } catch (err) {
+    console.error("❌ askClaude error:", err);
+    return "";
+  }
 }
 
 // ── Supabase DB helpers ───────────────────────────────────────────────────────
@@ -425,7 +429,7 @@ function EmailSettingsModal({ onClose, userEmail, userName }) {
 }
 
 // ── Nav ───────────────────────────────────────────────────────────────────────
-function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, emailConfigured }) {
+function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, emailConfigured, isDemo, onSignUp }) {
   return (
     <nav className="nav">
       <div style={{display:"flex",flexDirection:"column",lineHeight:1.1}}>
@@ -444,13 +448,21 @@ function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, emailConfigured
               paddingBottom:2,
             }}>{p==="learn"?"Learn":p==="test"?"Test":"Dashboard"}</button>
           ))}
-          <button onClick={onOpenEmailSettings} style={{
-            background:emailConfigured?"#D1FAE5":"var(--gold-light)",
-            border:emailConfigured?"1.5px solid #10B981":"1.5px solid var(--gold)",
-            borderRadius:10,padding:"5px 12px",cursor:"pointer",fontSize:13,fontWeight:600,
-            color:emailConfigured?"#065F46":"var(--gold2)",display:"flex",alignItems:"center",gap:4
-          }}>{emailConfigured?"🔔 ON":"🔕 Remind"}</button>
-          <button className="btn-outline" style={{padding:"6px 16px",fontSize:13}} onClick={onLogout}>Logout</button>
+          {!isDemo && (
+            <button onClick={onOpenEmailSettings} style={{
+              background:emailConfigured?"#D1FAE5":"var(--gold-light)",
+              border:emailConfigured?"1.5px solid #10B981":"1.5px solid var(--gold)",
+              borderRadius:10,padding:"5px 12px",cursor:"pointer",fontSize:13,fontWeight:600,
+              color:emailConfigured?"#065F46":"var(--gold2)",display:"flex",alignItems:"center",gap:4
+            }}>{emailConfigured?"🔔 ON":"🔕 Remind"}</button>
+          )}
+          {isDemo ? (
+            <button className="btn-primary" style={{padding:"6px 16px",fontSize:13}} onClick={onSignUp}>
+              Sign Up Free 🚀
+            </button>
+          ) : (
+            <button className="btn-outline" style={{padding:"6px 16px",fontSize:13}} onClick={onLogout}>Logout</button>
+          )}
         </div>
       )}
     </nav>
@@ -458,7 +470,7 @@ function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, emailConfigured
 }
 
 // ── Landing ───────────────────────────────────────────────────────────────────
-function Landing({ onStart }) {
+function Landing({ onStart, onDemo }) {
   return (
     <div className="page hero">
       <div className="hero-badge"><span/> Free for students aged 13–18</div>
@@ -477,7 +489,14 @@ function Landing({ onStart }) {
         <span style={{fontSize:16}}>✦</span>
         "Turn any interest into a clear learning path."
       </div>
-      <button className="btn-primary" style={{marginTop:28,fontSize:16,padding:"16px 44px",borderRadius:12}} onClick={onStart}>Build My Roadmap →</button>
+      <div style={{display:"flex",gap:12,marginTop:28,flexWrap:"wrap",justifyContent:"center"}}>
+        <button className="btn-primary" style={{fontSize:16,padding:"16px 44px",borderRadius:12}} onClick={onStart}>
+          Build My Roadmap →
+        </button>
+        <button className="btn-outline" style={{fontSize:16,padding:"16px 44px",borderRadius:12}} onClick={onDemo}>
+          👀 Try Demo
+        </button>
+      </div>
       <div className="feature-grid">
         {[
           {icon:"🎯",title:"Any Interest",desc:"Chess, coding, art, business — you name it, we map it"},
@@ -822,8 +841,36 @@ function buildFallback(form) {
   };
 }
 
+// ── DEMO ROADMAP ──────────────────────────────────────────────────────────────
+const DEMO_THEMES = ["Business Foundations","Market Research","Building Your Product","Marketing & Sales","Finance & Operations","Scaling & Growth"];
+
+const DEMO_ROADMAP = {
+  title: "6-Month Entrepreneurship Roadmap — Demo",
+  months: Array.from({length:6}, (_,mi) => ({
+    month: mi+1,
+    theme: DEMO_THEMES[mi],
+    focus: `Month ${mi+1}: ${DEMO_THEMES[mi]}`,
+    weeks: Array.from({length:4}, (_,wi) => ({
+      week: wi+1,
+      goal: `Week ${wi+1} — ${DEMO_THEMES[mi]}`,
+      days: Array.from({length:7}, (_,di) => ({
+        day: di+1,
+        task: di===6
+          ? `Review & reflect on Week ${wi+1} 🌟`
+          : `${DEMO_THEMES[mi]}: Study and practice sub-topic ${di+1}`
+      })),
+      testTopic: DEMO_THEMES[mi],
+    }))
+  }))
+};
+
+const DEMO_PROGRESS = {
+  currentMonth:1, currentWeek:1, currentDay:1,
+  streak:3, completedDays:["m1w1d1","m1w1d2","m1w1d3"]
+};
+
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
-function Dashboard({ user, roadmap, progress, onUpdateProgress, onNav }) {
+function Dashboard({ user, roadmap, progress, onUpdateProgress, onNav, isDemo }) {
   const { currentMonth=1, currentWeek=1, currentDay=1, streak=1, completedDays=[] } = progress;
   const totalDays = 180;
   const pct = Math.min(100, Math.round((completedDays.length / totalDays)*100));
@@ -833,6 +880,7 @@ function Dashboard({ user, roadmap, progress, onUpdateProgress, onNav }) {
   const todayTask = week?.days[currentDay-1]?.task ?? "All caught up! Great job 🎉";
 
   const markDone = async () => {
+    if (isDemo) { alert("Sign up to track your real progress! 🚀"); return; }
     const key = `m${currentMonth}w${currentWeek}d${currentDay}`;
     if (completedDays.includes(key)) return;
     const newCompleted = [...completedDays, key];
@@ -926,7 +974,7 @@ STRICT RULES:
 - ZERO filler phrases like "Great question!" or "Certainly!"`;
 
 // ── LEARNING PAGE ─────────────────────────────────────────────────────────────
-function Learn({ progress, roadmap, onUpdateProgress, user }) {
+function Learn({ progress, roadmap, onUpdateProgress, user, isDemo, onSignUp }) {
   const { currentMonth=1, currentWeek=1, currentDay=1 } = progress;
   const month = roadmap.months[currentMonth-1];
   const week  = month?.weeks[currentWeek-1];
@@ -998,27 +1046,9 @@ Return ONLY valid JSON, no markdown, no extra text:
       "keyTakeaway": "One powerful sentence the student will remember forever.",
       "homework": null
     },
-    {
-      "num": 2,
-      "title": "...",
-      "body": "...",
-      "keyTakeaway": "...",
-      "homework": null
-    },
-    {
-      "num": 3,
-      "title": "...",
-      "body": "...",
-      "keyTakeaway": "...",
-      "homework": null
-    },
-    {
-      "num": 4,
-      "title": "...",
-      "body": "...",
-      "keyTakeaway": "...",
-      "homework": null
-    },
+    {"num":2,"title":"...","body":"...","keyTakeaway":"...","homework":null},
+    {"num":3,"title":"...","body":"...","keyTakeaway":"...","homework":null},
+    {"num":4,"title":"...","body":"...","keyTakeaway":"...","homework":null},
     {
       "num": 5,
       "title": "...",
@@ -1070,22 +1100,17 @@ Return ONLY valid JSON, no markdown, no extra text:
   };
 
   const submitDoubt = async () => {
-    if (!doubt.trim()) return;
-    if (loadingDoubt) return;
+    if (!doubt.trim() || loadingDoubt) return;
     setLoadingDoubt(true);
     setAnswer("");
     try {
-      const res = await askDoubt(doubt);
-      if (!res || res.includes("error")) {
-        setAnswer("Too many students are asking right now 😅 Try again in a few seconds.");
-      } else {
-        setAnswer(res.trim().length > 10 ? res : "Hmm, my signal's a bit weak right now! Try again in a moment. 🧙‍♂️");
-      }
+      const res = await askClaude([{ role: "user", content: `${PROFESSOR_SYSTEM}\n\nA student is learning "${roadmap.title}" this week studying "${weekTopic}". They ask: "${doubt}"\n\nAnswer as Professor Max. Be warm, funny, specific to their topic. Under 150 words.` }]);
+      setAnswer(res || "⚠️ No response received. Try again!");
     } catch (e) {
-      setAnswer("My crystal ball is foggy right now! Check your internet and try again. 🔮");
+      console.error("Submit error:", e);
+      setAnswer("⚠️ Something broke");
     }
     setLoadingDoubt(false);
-    setDoubt("");
   };
 
   const markDone = () => {
@@ -1142,6 +1167,7 @@ Return ONLY valid JSON, no markdown, no extra text:
   };
 
   const submitTask = async () => {
+    if (isDemo) { alert("Sign up to submit tasks and get AI feedback! 🚀"); return; }
     const task = getWeeklyTask();
     const allAnswered = task.steps.every(s => taskSteps[s.id]?.trim().length > 10);
     if(!allAnswered) return;
@@ -1189,14 +1215,13 @@ Return ONLY valid JSON, no markdown, no extra text:
       <div style={{fontSize:56,marginBottom:16}}>🧙‍♂️</div>
       <div className="dots"><span/><span/><span/></div>
       <p style={{color:"var(--smoke)",marginTop:16,fontStyle:"italic"}}>
-        "Preparing 5 lectures for Day {currentDay} of {weekTopic}… polishing the whiteboard…"
+        {`"Preparing 5 lectures for Day ${currentDay} of ${weekTopic}… polishing the whiteboard…"`}
       </p>
     </div>
   );
 
   return (
     <div className="page container" style={{paddingTop:24,paddingBottom:60}}>
-
       <div style={{
         background:"linear-gradient(135deg,var(--ink),#1A1A2E)",
         borderRadius:16, padding:"20px 24px", marginBottom:24,
@@ -1214,7 +1239,6 @@ Return ONLY valid JSON, no markdown, no extra text:
 
       {lectures && (
         <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
-
           <div style={{width:"100%",maxWidth:260,flexShrink:0}}>
             <div className="card" style={{padding:12}}>
               <p style={{fontWeight:700,fontSize:13,marginBottom:10,color:"var(--smoke)",textTransform:"uppercase",letterSpacing:1}}>
@@ -1563,8 +1587,8 @@ Return ONLY valid JSON (no markdown):
       const raw = await askClaude([{role:"user", content: prompt}], "", 3000);
       const d = JSON.parse(raw.replace(/```json|```/g,"").trim());
       allQuestions = d.questions.slice(0, 25);
-    }catch {
-      allQuestions = Array.from({length:50}, (_,i) => ({
+    } catch {
+      allQuestions = Array.from({length:25}, (_,i) => ({
         q: `Question ${i+1}: What is an important concept in ${topic}?`,
         options: ["A) Option A","B) Option B","C) Option C","D) Option D"],
         answer: "A",
@@ -1587,7 +1611,6 @@ Return ONLY valid JSON (no markdown):
 
   return (
     <div className="page container" style={{paddingTop:24,paddingBottom:60}}>
-
       <div style={{
         background:"linear-gradient(135deg,var(--ink),#1A1A2E)",
         borderRadius:16,padding:"20px 24px",marginBottom:24,
@@ -1596,7 +1619,7 @@ Return ONLY valid JSON (no markdown):
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
           <span className="pill">Month {currentMonth}</span>
           <span className="pill">Week {currentWeek}</span>
-          <span className="pill" style={{background:"var(--gold)",color:"var(--ink)"}}>📝 50 Questions</span>
+          <span className="pill" style={{background:"var(--gold)",color:"var(--ink)"}}>📝 25 Questions</span>
         </div>
         <h2 style={{color:"#fff",fontSize:20,marginBottom:4}}>Weekly Test: {topic}</h2>
         <p style={{color:"rgba(255,255,255,0.6)",fontSize:13}}>Test your knowledge across all this week's material</p>
@@ -1607,10 +1630,10 @@ Return ONLY valid JSON (no markdown):
           <div style={{fontSize:64,marginBottom:16}}>📝</div>
           <h2 style={{marginBottom:8}}>Ready for your weekly test?</h2>
           <p style={{color:"var(--smoke)",marginBottom:24,maxWidth:400,margin:"0 auto 24px"}}>
-            50 questions covering everything from this week. No timer — take your time!
+            25 questions covering everything from this week. No timer — take your time!
           </p>
           <button className="btn-primary" style={{fontSize:16,padding:"14px 32px"}} onClick={loadTest}>
-            Start 50-Question Test 🚀
+            Start Test 🚀
           </button>
         </div>
       )}
@@ -1620,7 +1643,7 @@ Return ONLY valid JSON (no markdown):
           <div style={{fontSize:56,marginBottom:16}}>🧠</div>
           <div className="dots"><span/><span/><span/></div>
           <p style={{color:"var(--smoke)",marginTop:16,fontStyle:"italic"}}>
-            Generating 50 questions on {topic}… about 20 seconds…
+            Generating questions on {topic}…
           </p>
         </div>
       )}
@@ -1684,7 +1707,7 @@ Return ONLY valid JSON (no markdown):
               <button className="btn-primary" onClick={submit}
                 disabled={Object.keys(answers).length < questions.length}
                 style={{flex:1,background:"var(--emerald)"}}>
-                Submit All 50 ✓
+                Submit All ✓
               </button>
             )}
           </div>
@@ -1754,6 +1777,7 @@ export default function App() {
   const [profile,  setProfile]  = useState(null);
   const [roadmap,  setRoadmap]  = useState(null);
   const [progress, setProgress] = useState(null);
+  const [isDemo,   setIsDemo]   = useState(false);
   const [showEmailSettings, setShowEmailSettings] = useState(false);
   const [emailConfigured,   setEmailConfigured]   = useState(()=>{
     try { return !!(localStorage.getItem("ejs_service")&&localStorage.getItem("ejs_key")); } catch { return false; }
@@ -1829,9 +1853,26 @@ export default function App() {
     setPage("landing");
   };
 
+  // ── Demo mode ──
+  const startDemo = () => {
+    setRoadmap(DEMO_ROADMAP);
+    setProgress(DEMO_PROGRESS);
+    setIsDemo(true);
+    setPage("dashboard");
+  };
+
+  const exitDemo = () => {
+    setIsDemo(false);
+    setRoadmap(null);
+    setProgress(null);
+    setUser(null);
+    setPage("landing");
+  };
+
   const handleProgressUpdate = (newProgress) => setProgress(newProgress);
 
   const showNav = ["dashboard","learn","test"].includes(page);
+  const navUser = isDemo ? { email:"demo@velorn.app" } : user;
 
   if (page==="loading") return (
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",flexDirection:"column",gap:20}}>
@@ -1860,12 +1901,35 @@ export default function App() {
       )}
 
       {showNav && <Nav
-        user={user} onLogout={logout} onNav={setPage} page={page}
+        user={navUser}
+        onLogout={isDemo ? exitDemo : logout}
+        onNav={setPage}
+        page={page}
         onOpenEmailSettings={()=>setShowEmailSettings(true)}
         emailConfigured={emailConfigured}
+        isDemo={isDemo}
+        onSignUp={()=>{ exitDemo(); setPage("auth"); }}
       />}
 
-      {showEmailSettings && (
+      {/* Demo banner */}
+      {isDemo && (
+        <div style={{
+          background:"linear-gradient(135deg,#1A1A2E,#2D1B69)",
+          borderBottom:"2px solid var(--gold)",
+          padding:"10px 24px", textAlign:"center",
+          display:"flex", alignItems:"center", justifyContent:"center",
+          gap:12, fontSize:14, color:"var(--gold-light)", fontWeight:500,
+          flexWrap:"wrap"
+        }}>
+          <span>👀 You're in Demo Mode — exploring a sample Entrepreneurship roadmap</span>
+          <button onClick={()=>{ exitDemo(); setPage("auth"); }} style={{
+            background:"var(--gold)", color:"var(--ink)", border:"none",
+            borderRadius:8, padding:"5px 14px", fontSize:13, fontWeight:700, cursor:"pointer"
+          }}>Sign Up Free →</button>
+        </div>
+      )}
+
+      {showEmailSettings && !isDemo && (
         <EmailSettingsModal
           onClose={()=>{ setShowEmailSettings(false); try { setEmailConfigured(!!(localStorage.getItem("ejs_service")&&localStorage.getItem("ejs_key"))); } catch {} }}
           userEmail={user?.email}
@@ -1873,11 +1937,11 @@ export default function App() {
         />
       )}
 
-      {page==="landing"   && <Landing onStart={()=>setPage("auth")}/>}
+      {page==="landing"   && <Landing onStart={()=>setPage("auth")} onDemo={startDemo}/>}
       {page==="auth"      && <Auth onAuth={onAuth}/>}
       {page==="onboard"   && user && <Onboarding user={user} profile={profile} onDone={(rm,pg)=>{setRoadmap(rm);setProgress(pg);setPage("dashboard");}}/>}
-      {page==="dashboard" && roadmap && progress && <Dashboard user={user} roadmap={roadmap} progress={progress} onUpdateProgress={handleProgressUpdate} onNav={setPage}/>}
-      {page==="learn"     && roadmap && progress && <Learn user={user} progress={progress} roadmap={roadmap} onUpdateProgress={handleProgressUpdate}/>}
+      {page==="dashboard" && roadmap && progress && <Dashboard user={user} roadmap={roadmap} progress={progress} onUpdateProgress={handleProgressUpdate} onNav={setPage} isDemo={isDemo}/>}
+      {page==="learn"     && roadmap && progress && <Learn user={user} progress={progress} roadmap={roadmap} onUpdateProgress={handleProgressUpdate} isDemo={isDemo} onSignUp={()=>{ exitDemo(); setPage("auth"); }}/>}
       {page==="test"      && roadmap && progress && <WeeklyTest progress={progress} roadmap={roadmap}/>}
     </>
   );
