@@ -21,10 +21,10 @@ serve(async (req) => {
       );
     }
 
-    const apiKey = Deno.env.get("GEMINI_API_KEY");
+    const apiKey = Deno.env.get("GROQ_API_KEY");
 
     if (!apiKey) {
-      console.error("No Gemini API key configured");
+      console.error("No Groq API key configured");
       return new Response(
         JSON.stringify({ answer: "Server not configured properly." }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -32,45 +32,40 @@ serve(async (req) => {
     }
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      "https://api.groq.com/openai/v1/chat/completions",
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+        },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: question }] }],
-          generationConfig: {
-            temperature: 0.9,
-            maxOutputTokens: 1024,
-          },
+          model: "llama-3.3-70b-versatile",
+          messages: [{ role: "user", content: question }],
+          temperature: 0.9,
+          max_tokens: 1024,
         }),
       }
     );
 
     const data = await response.json();
-    console.log("Gemini status:", response.status);
+    console.log("Groq status:", response.status);
 
     if (data.error) {
-      console.error("Gemini error:", data.error.message);
+      console.error("Groq error:", data.error.message);
       return new Response(
         JSON.stringify({ answer: "⚠️ AI is busy. Try again in a moment." }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    let answer = "";
-
-    if (data.candidates && data.candidates.length > 0) {
-      const candidate = data.candidates[0];
-      if (candidate?.content?.parts?.length > 0) {
-        answer = candidate.content.parts
-          .map((p: any) => p.text || "")
-          .join("")
-          .trim();
-      }
-    }
+    const answer = data?.choices?.[0]?.message?.content || "";
 
     if (!answer) {
-      answer = "🤖 I couldn't generate a response. Try asking differently.";
+      return new Response(
+        JSON.stringify({ answer: "🤖 I couldn't generate a response. Try asking differently." }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     return new Response(JSON.stringify({ answer }), {
