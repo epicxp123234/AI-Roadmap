@@ -1063,18 +1063,22 @@ Return ONLY valid JSON, no markdown, no extra text:
 }`;
 
     let raw = "";
-    try {
-      raw = await askClaude([{ role: "user", content: dayTopicPrompt }], PROFESSOR_SYSTEM, 4000);
-    } catch(e) { raw = ""; }
+try {
+  raw = await askClaude([{ role: "user", content: dayTopicPrompt }]);
+} catch(e) { raw = ""; }
 
-    try {
-      const data = JSON.parse(raw.replace(/```json|```/g, "").trim());
-      if (data.lectures && data.lectures.length > 0) {
-        setLectures(data.lectures);
-        setLoading(false);
-        return;
-      }
-    } catch { /* fall through to fallback */ }
+try {
+  // extract JSON even if AI wraps it in extra text
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    const data = JSON.parse(jsonMatch[0]);
+    if (data.lectures && data.lectures.length > 0) {
+      setLectures(data.lectures);
+      setLoading(false);
+      return;
+    }
+  }
+} catch(e) { console.warn("Lecture parse failed:", e); }
 
     const hooks = [
       `Here's a shocking fact almost nobody knows about ${weekTopic}:`,
@@ -1554,14 +1558,14 @@ function WeeklyTest({ progress, roadmap }) {
   const [currentQ, setCurrentQ]   = useState(0);
 
   const loadTest = async () => {
-    setLoading(true);
-    setSubmitted(false);
-    setAnswers({});
-    setCurrentQ(0);
+  setLoading(true);
+  setSubmitted(false);
+  setAnswers({});
+  setCurrentQ(0);
 
-    let allQuestions = [];
-    try {
-      const prompt = `You are creating a weekly test for a student learning "${roadmap.title}".
+  let allQuestions = [];
+  try {
+    const prompt = `You are creating a weekly test for a student learning "${roadmap.title}".
 Week topic: "${topic}"
 
 Generate exactly 25 multiple choice questions. STRICT RULES:
@@ -1584,20 +1588,23 @@ Return ONLY valid JSON (no markdown):
   ]
 }`;
 
-      const raw = await askClaude([{role:"user", content: prompt}], "", 3000);
-      const d = JSON.parse(raw.replace(/```json|```/g,"").trim());
+    const raw = await askClaude([{role:"user", content: prompt}]);
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const d = JSON.parse(jsonMatch[0]);
       allQuestions = d.questions.slice(0, 25);
-    } catch {
-      allQuestions = Array.from({length:25}, (_,i) => ({
-        q: `Question ${i+1}: What is an important concept in ${topic}?`,
-        options: ["A) Option A","B) Option B","C) Option C","D) Option D"],
-        answer: "A",
-        explanation: `This is a key concept in ${topic}. Keep studying and you'll master it!`
-      }));
     }
-    setQuestions(allQuestions);
-    setLoading(false);
-  };
+  } catch {
+    allQuestions = Array.from({length:25}, (_,i) => ({
+      q: `Question ${i+1}: What is an important concept in ${topic}?`,
+      options: ["A) Option A","B) Option B","C) Option C","D) Option D"],
+      answer: "A",
+      explanation: `This is a key concept in ${topic}. Keep studying and you'll master it!`
+    }));
+  }
+  setQuestions(allQuestions);
+  setLoading(false);
+};
 
   const submit = () => {
     let s = 0;

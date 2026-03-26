@@ -1,6 +1,6 @@
-import { serve } from "https://deno.land/std/http/server.ts";
+import { serve } from "std/http/server.ts";
 
-serve(async (req) => {
+serve(async (req: Request) => {
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers":
@@ -72,10 +72,11 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
-  } catch (err) {
-    console.error("Server error:", err.message);
+  } catch (err: unknown) {
+    const errMessage = err instanceof Error ? err.message : String(err);
+    console.error("Server error:", errMessage);
     return new Response(
-      JSON.stringify({ answer: "Server error. Try again.", error: err.message }),
+      JSON.stringify({ answer: "Server error. Try again.", error: errMessage }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
   }
