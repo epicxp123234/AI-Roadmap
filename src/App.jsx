@@ -1015,52 +1015,41 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo, onSignUp }) 
     const startNum = (dayNumber - 1) * 5 + 1;
     const endNum = dayNumber * 5;
 
-    const dayTopicPrompt = `You are Professor Max teaching Day ${dayNumber} of Week ${currentWeek}, Month ${currentMonth} for a student learning "${roadmap.title}".
+    const dayTopicPrompt = `
+You are a world-class mentor teaching a 14-year-old beginner.
 
-This week's overall theme: "${weekTopic}"
-Today you cover sub-topics ${startNum} to ${endNum} of this week's theme.
+Topic: "${weekTopic}"
+Context: "${roadmap.title}"
 
-Generate exactly 5 lectures for TODAY. Each lecture must:
+Generate EXACTLY 5 lectures.
 
-1. Cover a COMPLETELY DIFFERENT sub-topic of "${weekTopic}" — zero overlap between lectures
-2. Be THOROUGH — body must be 8-10 rich, meaty sentences. Go deep. Teach the concept fully.
-3. Use a DIFFERENT hook style for each lecture — rotate between:
-   - Lecture 1: Start with a shocking surprising fact
-   - Lecture 2: Start with a relatable real story or scenario  
-   - Lecture 3: Start with a "what if" thought experiment
-   - Lecture 4: Start with a famous person or company example
-   - Lecture 5: Start with a counterintuitive or surprising claim
-4. Tone: funny, warm, like a genius older friend texting you. NOT a textbook. NOT dry.
-5. Every single word must be 100% specific to "${roadmap.title}" — if it's entrepreneurship use business examples, if it's art use drawing/design examples, if it's coding use programming examples. ZERO generic filler.
-6. Short paragraphs inside the body — easy to read, lots of white space energy
-7. Lecture 5 gets a homework array with 2 specific, actionable tasks the student can do TODAY related to "${roadmap.title}"
-8. Make the student feel EXCITED after reading each lecture — they should want to immediately try something
+STRICT RULES:
+- No motivational lines
+- No "shocking fact", "top 1%", or storytelling hooks
+- No repetition between lectures
+- No fluff. Every sentence must teach something new
+- Each lecture must be SHORT (120–180 words max)
 
-Return ONLY valid JSON, no markdown, no extra text:
+Each lecture MUST follow this structure:
+
 {
-  "lectures": [
-    {
-      "num": 1,
-      "title": "Punchy exciting title with emoji — specific to ${roadmap.title}",
-      "body": "8-10 sentences. Thorough. Different hook. Specific to ${roadmap.title}. Funny but deep. Short paragraphs separated by newlines.",
-      "keyTakeaway": "One powerful sentence the student will remember forever.",
-      "homework": null
-    },
-    {"num":2,"title":"...","body":"...","keyTakeaway":"...","homework":null},
-    {"num":3,"title":"...","body":"...","keyTakeaway":"...","homework":null},
-    {"num":4,"title":"...","body":"...","keyTakeaway":"...","homework":null},
-    {
-      "num": 5,
-      "title": "...",
-      "body": "...",
-      "keyTakeaway": "...",
-      "homework": [
-        "Specific actionable task 1 related to ${roadmap.title} — do it TODAY",
-        "Specific actionable task 2 related to ${roadmap.title} — do it TODAY"
-      ]
-    }
-  ]
-}`;
+  "num": number,
+  "title": "clear, specific title",
+  "coreIdea": "2-3 lines explaining the concept simply",
+  "example": "real-world example relevant to ${roadmap.title}",
+  "action": "one small task the student can do today",
+  "mistake": "common beginner mistake",
+  "takeaway": "one powerful sentence"
+}
+
+Lecture 5 ALSO includes:
+"homework": [
+  "specific task 1",
+  "specific task 2"
+]
+
+Return ONLY valid JSON.
+`;
 
     let raw = "";
 try {
@@ -1069,9 +1058,16 @@ try {
 
 try {
   // extract JSON even if AI wraps it in extra text
-  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
-    const data = JSON.parse(jsonMatch[0]);
+    // clean bad control characters before parsing
+    const cleaned = jsonMatch[0].replace(/[\u0000-\u001F\u007F]/g, (c) => {
+      if (c === '\n') return '\\n';
+      if (c === '\r') return '\\r';
+      if (c === '\t') return '\\t';
+      return '';
+    });
+    const data = JSON.parse(cleaned);
     if (data.lectures && data.lectures.length > 0) {
       setLectures(data.lectures);
       setLoading(false);
