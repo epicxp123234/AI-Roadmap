@@ -29,27 +29,22 @@ serve(async (req: Request) => {
       );
     }
 
-    // Detect if this is a lecture request
-    const isLectureRequest = question.includes("Generate EXACTLY 5 lectures") ||
-                             question.includes("Return this exact structure");
+    const isLectureRequest = question.includes("Generate exactly 5 lectures") ||
+                             question.includes("Return ONLY valid JSON");
 
     let systemPrompt = "You are a helpful and friendly AI assistant.";
-
     if (isLectureRequest) {
-      systemPrompt = `You are an expert educational content creator for teenagers.
-You MUST respond with **ONLY valid JSON** and nothing else.
-No explanations, no markdown, no code blocks, no extra text.`;
+      systemPrompt = `You are an expert educational content creator for teenagers. You MUST respond with ONLY valid JSON and nothing else. No explanations, no markdown, no code blocks, no extra text.`;
     }
 
     const groqBody = {
       model: "llama-3.3-70b-versatile",
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: question + "\n\nRespond with ONLY valid JSON. No other text at all." }
+        { role: "user", content: question }
       ],
       temperature: isLectureRequest ? 0.3 : 0.7,
       max_tokens: isLectureRequest ? 4000 : 1024,
-      response_format: { type: "json_object" }   // ← This is the most important fix
     };
 
     const response = await fetch(
@@ -77,7 +72,6 @@ No explanations, no markdown, no code blocks, no extra text.`;
 
     let answer = data?.choices?.[0]?.message?.content || "";
 
-    // Extra cleaning for safety
     answer = answer.trim()
       .replace(/^```json\s*/i, '')
       .replace(/^```\s*/i, '')
