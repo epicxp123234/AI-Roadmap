@@ -11,26 +11,16 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON, {
 });
 
 // ── Claude AI helper ─────────────────────────────────────────────────────────
-async function askClaude(input) {
+async function askClaude(messages) {
+  const userMessage = messages.find(m => m.role === "user")?.content || "";
+
   try {
-    const userMessage =
-      typeof input === "string"
-        ? input
-        : input?.find(m => m.role === "user")?.content || "";
-
-    if (!userMessage.trim()) {
-      console.warn("Empty question");
-      return "";
-    }
-
     const res = await fetch(
       "https://knqclhfxhkishaivowhe.supabase.co/functions/v1/ask-doubt",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "apikey": SUPABASE_ANON,
-          "Authorization": `Bearer ${SUPABASE_ANON}`,
         },
         body: JSON.stringify({
           question: userMessage,
@@ -38,22 +28,26 @@ async function askClaude(input) {
       }
     );
 
-    if (!res.ok) {
-      console.error("HTTP error:", res.status);
-      return "";
+    const data = await res.json();
+
+    console.log("FULL BACKEND RESPONSE:", data);
+
+    // ✅ CRITICAL FIX
+    if (typeof data.answer === "string") {
+      return data.answer;
     }
 
-    const data = await res.json();
-    console.log("✅ FULL BACKEND RESPONSE:", data);
+    if (data.answer?.content) {
+      return data.answer.content;
+    }
 
-    return (data?.answer || "").trim();
+    return JSON.stringify(data); // fallback
 
-  } catch (err) {
-    console.error("❌ askClaude error:", err);
+  } catch (e) {
+    console.error("askClaude error:", e);
     return "";
   }
 }
-
 // ── Supabase DB helpers ───────────────────────────────────────────────────────
 async function getProfile(userId) {
   const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
@@ -1009,13 +1003,14 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo, onSignUp }) 
   }, [currentMonth, currentWeek, currentDay]);
 
   const loadLectures = async () => {
-    setLoading(true);
+  setLoading(true);
+  setLectures(null);
+  setActiveLecture(0);
 
-    const dayNumber = currentDay;
-    const startNum = (dayNumber - 1) * 5 + 1;
-    const endNum = dayNumber * 5;
+  const dayNumber = currentDay;
+  const weekTopic = week?.goal ?? "Core Concepts";
 
-    const dayTopicPrompt = `
+  const dayTopicPrompt = `
 You are a world-class mentor teaching a 14-year-old beginner.
 
 Topic: "${weekTopic}"
@@ -1024,80 +1019,148 @@ Context: "${roadmap.title}"
 Generate EXACTLY 5 lectures.
 
 STRICT RULES:
-- No motivational lines
-- No "shocking fact", "top 1%", or storytelling hooks
-- No repetition between lectures
-- No fluff. Every sentence must teach something new
-- Each lecture must be SHORT (120–180 words max)
+- Return ONLY valid JSON. No explanations, no markdown, no backticks, no extra text.
+- Use double quotes for all strings.
+- No trailing commas.
+- Keep each lecture short and clear.
 
-Each lecture MUST follow this structure:
+Return this exact structure:
 
 {
-  "num": number,
-  "title": "clear, specific title",
-  "coreIdea": "2-3 lines explaining the concept simply",
-  "example": "real-world example relevant to ${roadmap.title}",
-  "action": "one small task the student can do today",
-  "mistake": "common beginner mistake",
-  "takeaway": "one powerful sentence"
+  "lectures": [
+    {
+      "num": 1,
+      "title": "Clear and specific title",
+      "coreIdea": "2-3 lines explaining the concept simply",
+      "example": "Real-world example relevant to ${roadmap.title}",
+      "action": "One small task the student can do today",
+      "mistake": "Common beginner mistake",
+      "takeaway": "One powerful sentence"
+    },
+    {
+      "num": 2,
+      "title": "...",
+      "coreIdea": "...",
+      "example": "...",
+      "action": "...",
+      "mistake": "...",
+      "takeaway": "..."
+    },
+    {
+      "num": 3,
+      "title": "...",
+      "coreIdea": "...",
+      "example": "...",
+      "action": "...",
+      "mistake": "...",
+      "takeaway": "..."
+    },
+    {
+      "num": 4,
+      "title": "...",
+      "coreIdea": "...",
+      "example": "...",
+      "action": "...",
+      "mistake": "...",
+      "takeaway": "..."
+    },
+    {
+      "num": 5,
+      "title": "...",
+      "coreIdea": "...",
+      "example": "...",
+      "action": "...",
+      "mistake": "...",
+      "takeaway": "...",
+      "homework": [
+        "Specific task 1",
+        "Specific task 2"
+      ]
+    }
+  ]
 }
-
-Lecture 5 ALSO includes:
-"homework": [
-  "specific task 1",
-  "specific task 2"
-]
-
-Return ONLY valid JSON.
 `;
 
-    let raw = "";
-try {
-  raw = await askClaude([{ role: "user", content: dayTopicPrompt }]);
-} catch(e) { raw = ""; }
+  let raw = "";
 
-try {
-  // extract JSON even if AI wraps it in extra text
-   const jsonMatch = raw.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    // clean bad control characters before parsing
-    const cleaned = jsonMatch[0].replace(/[\u0000-\u001F\u007F]/g, (c) => {
-      if (c === '\n') return '\\n';
-      if (c === '\r') return '\\r';
-      if (c === '\t') return '\\t';
-      return '';
-    });
-    const data = JSON.parse(cleaned);
-    if (data.lectures && data.lectures.length > 0) {
-      setLectures(data.lectures);
-      setLoading(false);
-      return;
+  try {
+    raw = await askClaude([{ role: "user", content: dayTopicPrompt }]);
+    console.log("Raw response from askClaude:", raw?.substring(0, 500) + "...");
+  } catch (e) {
+    console.error("askClaude failed:", e);
+    raw = "";
+  }
+
+  // ── Robust JSON extraction and parsing ─────────────────────────────────
+  if (raw && raw.trim()) {
+    try {
+      // Clean the response
+      let cleaned = raw
+        .trim()
+        .replace(/```json|```/gi, "")           // Remove markdown code blocks
+        .replace(/^[\s\n\r]*|[\s\n\r]*$/g, "")  // Trim whitespace
+        .replace(/,(\s*[}\]])/g, "$1");         // Remove trailing commas
+
+      // Extract the largest JSON object
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        cleaned = jsonMatch[0];
+      }
+
+      const parsed = JSON.parse(cleaned);
+
+      // Handle different possible response structures
+      let lecturesArray = [];
+
+      if (Array.isArray(parsed)) {
+        lecturesArray = parsed;
+      } else if (parsed.lectures && Array.isArray(parsed.lectures)) {
+        lecturesArray = parsed.lectures;
+      } else if (parsed && typeof parsed === "object") {
+        lecturesArray = [parsed]; // fallback if single object
+      }
+
+      if (lecturesArray.length >= 3) {
+        console.log("✅ Successfully parsed", lecturesArray.length, "lectures");
+        setLectures(lecturesArray);
+        setLoading(false);
+        return;
+      }
+    } catch (parseErr) {
+      console.warn("JSON parse failed:", parseErr.message);
+      console.warn("Raw response was:", raw.substring(0, 400));
     }
   }
-} catch(e) { console.warn("Lecture parse failed:", e); }
 
-    const hooks = [
-      `Here's a shocking fact almost nobody knows about ${weekTopic}:`,
-      `Picture this scenario — you're three months into learning ${roadmap.title} and suddenly everything clicks. What changed?`,
-      `What if I told you the single biggest mistake people make when learning ${weekTopic} is something you can fix in five minutes?`,
-      `The top 1% of people in ${roadmap.title} all share one habit when it comes to ${weekTopic}. Here it is:`,
-      `This is going to sound counterintuitive, but the "obvious" approach to ${weekTopic} is almost always the wrong one.`,
-    ];
+  // ── Fallback Lectures (if AI fails) ─────────────────────────────────────
+  console.log("Using fallback lectures");
 
-    const fallbackLectures = Array.from({ length: 5 }, (_, i) => ({
-      num: i + 1,
-      title: `${["🔥","💡","🚀","🎯","🏆"][i]} ${weekTopic} — Part ${startNum + i}`,
-      body: `${hooks[i]} The truth is, ${weekTopic} in the context of ${roadmap.title} is one of those concepts that separates people who dabble from people who actually get results. Most beginners skip over it because it doesn't look impressive on the surface — but professionals come back to it again and again because it forms the foundation of everything else. Think of it like the foundation of a building: you can't see it once the building is up, but remove it and the whole thing collapses. The people at the top of ${roadmap.title} didn't get there by accident — they mastered the fundamentals so completely that the advanced stuff became obvious. Your job today is to understand this concept at a deep level, not just memorize a definition. Ask yourself: where does this show up in real examples of ${roadmap.title}? When would I use this? What goes wrong when people ignore it? Those three questions, applied to every concept you learn, will put you in the top 10% faster than any shortcut ever could. Read this twice. Then close your eyes and explain it back to yourself in your own words. That moment of friction is where the real learning happens.`,
-      keyTakeaway: `Mastering ${weekTopic} deeply — not just surface-level — is what separates serious ${roadmap.title} practitioners from everyone else.`,
-      homework: i === 4 ? [
-        `Find one real-world example of ${weekTopic} in ${roadmap.title} — screenshot it, write about it, or build a tiny version of it`,
-        `Spend 15 minutes applying what you learned today to something tangible — even if it's small and imperfect, make it real`
-      ] : null
-    }));
+  const hooks = [
+    `Here's a shocking fact almost nobody knows about ${weekTopic}:`,
+    `Picture this scenario — you're three months into learning ${roadmap.title}...`,
+    `What if I told you the single biggest mistake people make when learning ${weekTopic}...`,
+    `The top 1% of people in ${roadmap.title} all share one habit...`,
+    `This is going to sound counterintuitive, but...`,
+  ];
 
-    setLectures(fallbackLectures);
-    setLoading(false);
-  };
+  const fallbackLectures = Array.from({ length: 5 }, (_, i) => ({
+    num: i + 1,
+    title: `${["🔥", "💡", "🚀", "🎯", "🏆"][i]} ${weekTopic} — Part ${i + 1}`,
+    coreIdea: "This is the core concept explained simply.",
+    example: `Real-world example related to ${roadmap.title}.`,
+    action: "Try this small action today.",
+    mistake: "Common beginner mistake to avoid.",
+    takeaway: `Mastering this concept deeply will accelerate your progress in ${roadmap.title}.`,
+    homework: i === 4 ? [
+      `Find one real-world example of ${weekTopic} in ${roadmap.title}`,
+      `Apply what you learned today to something small but real`
+    ] : null,
+    body: `${hooks[i]} The truth is, ${weekTopic} forms the foundation of everything else in ${roadmap.title}. Professionals return to these fundamentals repeatedly.`
+  }));
+
+  setLectures(fallbackLectures);
+  setLoading(false);
+};
 
   const submitDoubt = async () => {
     if (!doubt.trim() || loadingDoubt) return;
