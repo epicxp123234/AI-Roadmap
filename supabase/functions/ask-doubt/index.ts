@@ -3,7 +3,8 @@ import { serve } from "std/http/server.ts";
 serve(async (req: Request) => {
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type",
   };
 
   if (req.method === "OPTIONS") {
@@ -21,6 +22,7 @@ serve(async (req: Request) => {
     }
 
     const apiKey = Deno.env.get("GROQ_API_KEY");
+
     if (!apiKey) {
       console.error("No Groq API key configured");
       return new Response(
@@ -28,24 +30,6 @@ serve(async (req: Request) => {
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const isLectureRequest = question.includes("Generate exactly 5 lectures") ||
-                             question.includes("Return ONLY valid JSON");
-
-    let systemPrompt = "You are a helpful and friendly AI assistant.";
-    if (isLectureRequest) {
-      systemPrompt = `You are an expert educational content creator for teenagers. You MUST respond with ONLY valid JSON and nothing else. No explanations, no markdown, no code blocks, no extra text.`;
-    }
-
-    const groqBody = {
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: question }
-      ],
-      temperature: isLectureRequest ? 0.3 : 0.7,
-      max_tokens: isLectureRequest ? 4000 : 1024,
-    };
 
     const response = await fetch(
       "https://api.groq.com/openai/v1/chat/completions",
@@ -55,7 +39,12 @@ serve(async (req: Request) => {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${apiKey}`,
         },
-        body: JSON.stringify(groqBody),
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [{ role: "user", content: question }],
+          temperature: 0.9,
+          max_tokens: 1024,
+        }),
       }
     );
 
@@ -70,13 +59,14 @@ serve(async (req: Request) => {
       );
     }
 
-    let answer = data?.choices?.[0]?.message?.content || "";
+    const answer = data?.choices?.[0]?.message?.content || "";
 
-    answer = answer.trim()
-      .replace(/^```json\s*/i, '')
-      .replace(/^```\s*/i, '')
-      .replace(/```$/i, '')
-      .trim();
+    if (!answer) {
+      return new Response(
+        JSON.stringify({ answer: "🤖 I couldn't generate a response. Try asking differently." }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     return new Response(JSON.stringify({ answer }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

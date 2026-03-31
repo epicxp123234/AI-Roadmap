@@ -694,18 +694,50 @@ function WeeklyTest({ progress, roadmap }) {
   const month=roadmap.months[currentMonth-1];const week=month?.weeks[currentWeek-1];const topic=week?.testTopic??week?.goal??"Core Concepts";
   const[questions,setQuestions]=useState(null);const[loading,setLoading]=useState(false);const[answers,setAnswers]=useState({});const[submitted,setSubmitted]=useState(false);const[score,setScore]=useState(0);const[currentQ,setCurrentQ]=useState(0);
 
-  const loadTest=async()=>{
-    setLoading(true);setSubmitted(false);setAnswers({});setCurrentQ(0);let allQuestions=[];
-    try{
-      const prompt=`Create a weekly test for a student learning "${roadmap.title}". Topic: "${topic}".
-Generate exactly 25 multiple choice questions. Return ONLY valid JSON (no markdown):
-{"questions":[{"q":"Question?","options":["A) option","B) option","C) option","D) option"],"answer":"A","explanation":"Clear explanation"}]}`;
-      const raw=await askClaude([{role:"user",content:prompt}]);
-      const jsonMatch=raw.match(/\{[\s\S]*\}/);
-      if(jsonMatch){const d=JSON.parse(jsonMatch[0]);allQuestions=d.questions.slice(0,25);}
-    }catch{allQuestions=Array.from({length:25},(_,i)=>({q:`Question ${i+1}: What is an important concept in ${topic}?`,options:["A) Option A","B) Option B","C) Option C","D) Option D"],answer:"A",explanation:`This is a key concept in ${topic}. Keep studying!`}));}
-    setQuestions(allQuestions);setLoading(false);
-  };
+ const loadTest = async () => {
+  setLoading(true); setSubmitted(false); setAnswers({}); setCurrentQ(0);
+  let allQuestions = [];
+  try {
+    const prompt = `Create 25 multiple choice questions for a student learning "${roadmap.title}" on the topic "${topic}".
+
+Rules:
+- Each question must be specific to "${roadmap.title}"
+- 4 options per question labeled A, B, C, D
+- Mix easy, medium and hard questions
+- Return ONLY this JSON structure, nothing else:
+
+{"questions":[{"q":"Question here?","options":["A) answer","B) answer","C) answer","D) answer"],"answer":"A","explanation":"Why this is correct"}]}`;
+
+    const raw = await askClaude([{role:"user", content:prompt}]);
+    console.log("Test raw:", raw?.substring(0, 500));
+
+    let cleaned = raw.trim().replace(/```json|```/gi, "").replace(/,(\s*[}\]])/g, "$1");
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const d = JSON.parse(jsonMatch[0]);
+      if (d.questions && Array.isArray(d.questions) && d.questions.length > 0) {
+        allQuestions = d.questions.slice(0, 25);
+        console.log("✅ Parsed", allQuestions.length, "questions");
+      }
+    }
+  } catch(e) {
+    console.warn("Test parse failed:", e.message);
+  }
+
+  // only use fallback if AI completely failed
+  if (allQuestions.length === 0) {
+    console.log("Using fallback questions");
+    allQuestions = Array.from({length:25}, (_,i) => ({
+      q: `Question ${i+1}: What is an important concept in ${topic}?`,
+      options: ["A) Option A","B) Option B","C) Option C","D) Option D"],
+      answer: "A",
+      explanation: `This is a key concept in ${topic}. Keep studying!`
+    }));
+  }
+
+  setQuestions(allQuestions);
+  setLoading(false);
+};
 
   const submit=()=>{let s=0;questions.forEach((q,i)=>{if(answers[i]===q.answer)s++;});setScore(s);setSubmitted(true);setCurrentQ(0);};
   const pct=questions?Math.round((Object.keys(answers).length/questions.length)*100):0;
