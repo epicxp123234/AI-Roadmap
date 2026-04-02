@@ -43,7 +43,7 @@ serve(async (req: Request) => {
           model: "llama-3.3-70b-versatile",
           messages: [{ role: "user", content: question }],
           temperature: 0.9,
-          max_tokens: 1024,
+          max_tokens: 6000,
         }),
       }
     );

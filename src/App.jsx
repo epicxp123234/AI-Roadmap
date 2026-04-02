@@ -698,13 +698,13 @@ function WeeklyTest({ progress, roadmap }) {
   setLoading(true); setSubmitted(false); setAnswers({}); setCurrentQ(0);
   let allQuestions = [];
   try {
-    const prompt = `Create 25 multiple choice questions for a student learning "${roadmap.title}" on the topic "${topic}".
+    const prompt = `Create 25 multiple choice questions for a student learning about "${topic}".
 
 Rules:
-- Each question must be specific to "${roadmap.title}"
+- Questions must be specific to "${topic}"
 - 4 options per question labeled A, B, C, D
-- Mix easy, medium and hard questions
-- Return ONLY this JSON structure, nothing else:
+- Mix easy, medium and hard
+- Return ONLY this JSON, nothing else:
 
 {"questions":[{"q":"Question here?","options":["A) answer","B) answer","C) answer","D) answer"],"answer":"A","explanation":"Why this is correct"}]}`;
 
@@ -759,7 +759,7 @@ Rules:
             <p style={{fontSize:12,fontWeight:700,color:"var(--gold2)",textTransform:"uppercase",letterSpacing:1,marginBottom:12}}>Question {currentQ+1}</p>
             <p style={{fontSize:17,fontWeight:600,lineHeight:1.6,marginBottom:20}}>{questions[currentQ].q}</p>
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {questions[currentQ].options.map((opt,j)=>{const letter=["A","B","C","D"][j];const selected=answers[currentQ]===letter;return <button key={j} onClick={()=>setAnswers(a=>({...a,[currentQ]:letter}))} style={{textAlign:"left",padding:"12px 16px",borderRadius:12,border:selected?"2px solid var(--gold)":"1.5px solid var(--pearl)",background:selected?"var(--gold-light)":"var(--paper)",cursor:"pointer",fontSize:15,fontWeight:selected?700:400,transition:"all .15s"}}>{opt}</button>;})}
+               {questions[currentQ].options.map((opt,j)=>{const letter=["A","B","C","D"][j];const selected=answers[currentQ]===letter;return <button key={j} onClick={()=>setAnswers(a=>({...a,[currentQ]:letter}))} style={{textAlign:"left",padding:"12px 16px",borderRadius:12,border:selected?"2px solid var(--gold)":"1.5px solid var(--pearl)",background:selected?"var(--gold-light)":"var(--paper)",cursor:"pointer",fontSize:15,fontWeight:selected?700:400,transition:"all .15s",color:"var(--ink)"}}>{opt}</button>;})}
             </div>
           </div>
           <div style={{display:"flex",gap:10}}>
