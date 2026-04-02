@@ -480,8 +480,14 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo, onSignUp }) 
   const loadLectures=async()=>{
     setLoading(true);
     const prompt=`You are a world-class mentor teaching a 14-year-old beginner.
-Topic: "${weekTopic}"
+
+Week topic: "${weekTopic}"
 Context: "${roadmap.title}"
+Today is Day ${currentDay} of 7 this week.
+
+Each day MUST cover completely different sub-topics. Day 1 = basics, Day 2 = deeper concepts, Day 3 = application, Day 4 = advanced, Day 5 = mastery, Day 6 = project, Day 7 = review.
+For Day ${currentDay}, cover sub-topics number ${(currentDay-1)*5+1} to ${currentDay*5} of "${weekTopic}". Do NOT repeat anything from previous days.
+
 Generate EXACTLY 5 lectures. Return ONLY valid JSON. No markdown, no backticks, no extra text.
 {"lectures":[{"num":1,"title":"Clear title","coreIdea":"2-3 lines explaining the concept simply","example":"Real-world example relevant to ${roadmap.title}","action":"One small task the student can do today","mistake":"Common beginner mistake","takeaway":"One powerful sentence"},{"num":2,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":3,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":4,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":5,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"...","homework":["Specific task 1","Specific task 2"]}]}`;
     let raw="";
