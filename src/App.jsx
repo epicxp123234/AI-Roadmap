@@ -358,43 +358,152 @@ function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, emailConfigured
 
 // ── Landing ───────────────────────────────────────────────────────────────────
 function Landing({ onStart, onDemo }) {
+  const [typed, setTyped] = useState("");
+  const [focused, setFocused] = useState(false);
+  const examples = ["Chess","Web Development","Digital Art","Entrepreneurship","Music Production","Graphic Design"];
+  const [exIdx, setExIdx] = useState(0);
+
+  // Cycle placeholder examples
+  useEffect(() => {
+    const t = setInterval(() => setExIdx(i => (i + 1) % examples.length), 2200);
+    return () => clearInterval(t);
+  }, []);
+
   const features = [
-    { icon: <Icon.Map/>, title: "Personalized Roadmap", desc: "6-month structured path built for your specific goals" },
-    { icon: <Icon.BookOpen/>, title: "Daily Lectures", desc: "5 focused lessons per day, crafted by AI around your topic" },
-    { icon: <Icon.Brain/>, title: "AI Tutor", desc: "Ask questions, get clear answers from Professor Max" },
-    { icon: <Icon.CheckSquare/>, title: "Weekly Tests", desc: "25-question assessments to reinforce your knowledge" },
-    { icon: <Icon.BarChart/>, title: "Progress Tracking", desc: "Visual dashboards showing your learning journey" },
-    { icon: <Icon.Flame/>, title: "Streak System", desc: "Daily accountability to keep you on track" },
+    { icon: <Icon.Map/>, title: "Know exactly what to study every day", desc: "A structured 6-month roadmap built specifically around your goal — no guessing, no Googling." },
+    { icon: <Icon.BookOpen/>, title: "5 short lessons daily — real depth, no overwhelm", desc: "Each lecture is focused, engaging, and written for how you actually learn." },
+    { icon: <Icon.Brain/>, title: "Ask anything. Get a real answer in seconds", desc: "Professor Max knows your topic and explains it like a knowledgeable friend — not a textbook." },
+    { icon: <Icon.CheckSquare/>, title: "Prove what you know — not just what you read", desc: "25-question weekly tests that show you exactly where you stand." },
+    { icon: <Icon.BarChart/>, title: "See yourself getting better, day by day", desc: "Visual progress that actually means something — not vanity metrics." },
+    { icon: <Icon.Flame/>, title: "Build a learning habit that actually sticks", desc: "Streaks, momentum, and structure that keep you coming back." },
   ];
+
   return (
-    <div className="hero page">
-      <div className="hero-grid"/>
-      <div className="hero-glow"/>
-      <div style={{position:"relative",zIndex:1,display:"flex",flexDirection:"column",alignItems:"center"}}>
-        <div className="badge badge-gold" style={{marginBottom:24}}>Free for students aged 13–18</div>
-        <h1 style={{fontSize:"clamp(36px,5.5vw,68px)",fontWeight:400,lineHeight:1.05,color:"var(--ink)",maxWidth:700,marginBottom:20}}>
-          Turn any interest into<br/>a clear learning path
-        </h1>
-        <p style={{fontSize:17,color:"var(--muted)",maxWidth:440,lineHeight:1.65,marginBottom:36}}>
-          Chess. Coding. Art. Entrepreneurship. Velorn builds your personal 6-month plan with daily lessons and an AI professor.
-        </p>
-        <div className="row gap-10">
-          <button className="btn btn-primary btn-lg row gap-8" onClick={onStart}>
-            Build My Roadmap <Icon.ArrowRight/>
-          </button>
-          <button className="btn btn-secondary btn-lg row gap-8" onClick={onDemo}>
-            <Icon.Eye/> View Demo
-          </button>
+    <div style={{minHeight:"calc(100vh - 58px)",display:"flex",flexDirection:"column",alignItems:"center",background:"var(--bg)",overflow:"hidden"}}>
+
+      {/* ── Hero ── */}
+      <div style={{width:"100%",maxWidth:1100,padding:"80px 24px 64px",display:"flex",flexDirection:"column",alignItems:"center",textAlign:"center",position:"relative"}}>
+
+        {/* Subtle radial glow */}
+        <div style={{position:"absolute",top:"-10%",left:"50%",transform:"translateX(-50%)",width:700,height:400,background:"radial-gradient(ellipse at center, rgba(180,83,9,0.07) 0%, transparent 65%)",pointerEvents:"none"}}/>
+
+        {/* Badge */}
+        <div style={{display:"inline-flex",alignItems:"center",gap:8,padding:"5px 14px",borderRadius:999,background:"var(--gold-light)",border:"1px solid #FDE68A",fontSize:12,fontWeight:600,color:"var(--gold)",marginBottom:28,letterSpacing:"0.04em"}}>
+          <span style={{width:6,height:6,borderRadius:"50%",background:"var(--gold-border)",display:"inline-block"}}/>
+          Free for students aged 13–18
         </div>
-        <div className="feature-grid">
+
+        {/* Headline */}
+        <h1 style={{fontFamily:"var(--font-display)",fontSize:"clamp(36px,5.5vw,72px)",fontWeight:400,lineHeight:1.06,color:"var(--ink)",maxWidth:720,marginBottom:20,letterSpacing:"-0.025em"}}>
+          Go from curious<br/>to <em style={{fontStyle:"italic",color:"var(--gold)"}}>capable</em> in 6 months
+        </h1>
+
+        {/* Subheadline */}
+        <p style={{fontSize:"clamp(15px,2vw,18px)",color:"var(--muted)",maxWidth:480,lineHeight:1.7,marginBottom:40}}>
+          Pick anything you want to learn. Velorn maps it out — daily lessons, weekly tests, and an AI tutor built around <em>you</em>.
+        </p>
+
+        {/* Interactive input CTA */}
+        <div style={{width:"100%",maxWidth:520,marginBottom:16}}>
+          <div style={{display:"flex",alignItems:"center",gap:0,background:"var(--surface)",border:`1.5px solid ${focused?"var(--ink)":"var(--border)"}`,borderRadius:10,boxShadow:focused?"0 0 0 3px rgba(9,9,11,0.08)":"var(--shadow)",transition:"all 0.15s",overflow:"hidden"}}>
+            <input
+              value={typed}
+              onChange={e=>setTyped(e.target.value)}
+              onFocus={()=>setFocused(true)}
+              onBlur={()=>setFocused(false)}
+              placeholder={`e.g. ${examples[exIdx]}`}
+              style={{flex:1,padding:"13px 18px",border:"none",outline:"none",fontSize:15,fontFamily:"var(--font)",background:"transparent",color:"var(--ink)"}}
+            />
+            <button
+              className="btn btn-primary"
+              style={{margin:5,borderRadius:7,padding:"10px 18px",flexShrink:0}}
+              onClick={onStart}
+            >
+              Build My Roadmap
+            </button>
+          </div>
+          <p style={{fontSize:12,color:"var(--subtle)",marginTop:8,textAlign:"center"}}>
+            No credit card · Takes 30 seconds to set up
+          </p>
+        </div>
+
+        {/* Secondary CTA */}
+        <button className="btn btn-ghost btn-sm row gap-6" onClick={onDemo} style={{color:"var(--muted)"}}>
+          <Icon.Eye/> See how it works first
+        </button>
+      </div>
+
+      {/* ── How It Works ── */}
+      <div style={{width:"100%",maxWidth:860,padding:"0 24px 72px"}}>
+        <div style={{borderTop:"1px solid var(--border)",paddingTop:56}}>
+          <p style={{fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--muted)",textAlign:"center",marginBottom:40}}>How Velorn Works</p>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:32}}>
+            {[
+              {n:"01",title:"Tell us what you want to learn",desc:"Type any skill, topic, or goal. Chess, coding, design — anything goes."},
+              {n:"02",title:"Get your 6-month roadmap",desc:"AI generates a complete structured plan with daily tasks tailored to your level and time."},
+              {n:"03",title:"Learn every day with Professor Max",desc:"5 focused lectures daily, weekly tests, and a tutor available 24/7 to answer questions."},
+            ].map(s=>(
+              <div key={s.n} style={{display:"flex",flexDirection:"column",gap:10}}>
+                <span style={{fontFamily:"var(--font-display)",fontSize:32,fontWeight:400,color:"var(--border)",letterSpacing:"-0.03em"}}>{s.n}</span>
+                <h3 style={{fontSize:15,fontWeight:600,color:"var(--ink)",lineHeight:1.4}}>{s.title}</h3>
+                <p style={{fontSize:14,color:"var(--muted)",lineHeight:1.6}}>{s.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Feature Grid ── */}
+      <div style={{width:"100%",maxWidth:860,padding:"0 24px 80px"}}>
+        <p style={{fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--muted)",textAlign:"center",marginBottom:40}}>Everything you need to actually learn</p>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:12}}>
           {features.map(f=>(
-            <div className="feature-item" key={f.title}>
-              <div className="feature-item-icon">{f.icon}</div>
-              <div className="feature-item-title">{f.title}</div>
-              <div className="feature-item-desc">{f.desc}</div>
+            <div
+              key={f.title}
+              style={{padding:"24px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,transition:"all 0.2s",cursor:"default"}}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--border-strong)";e.currentTarget.style.boxShadow="var(--shadow-md)";e.currentTarget.style.transform="translateY(-2px)";}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.boxShadow="none";e.currentTarget.style.transform="translateY(0)";}}
+            >
+              <div style={{width:36,height:36,borderRadius:8,background:"var(--surface2)",border:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--ink2)",marginBottom:14}}>{f.icon}</div>
+              <h4 style={{fontSize:14,fontWeight:600,color:"var(--ink)",marginBottom:6,lineHeight:1.4}}>{f.title}</h4>
+              <p style={{fontSize:13,color:"var(--muted)",lineHeight:1.55}}>{f.desc}</p>
             </div>
           ))}
         </div>
+      </div>
+
+      {/* ── Social Proof ── */}
+      <div style={{width:"100%",background:"var(--surface2)",borderTop:"1px solid var(--border)",borderBottom:"1px solid var(--border)",padding:"48px 24px"}}>
+        <div style={{maxWidth:860,margin:"0 auto"}}>
+          <p style={{fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--muted)",textAlign:"center",marginBottom:32}}>What students say</p>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:16}}>
+            {[
+              {q:"I've tried 10 other apps. Velorn is the only one where I actually knew what to do next every single day.",name:"Riya, 16",subject:"Learning Web Dev"},
+              {q:"Professor Max explained recursion better in 2 minutes than my teacher did in 2 weeks.",name:"Arjun, 17",subject:"Studying Programming"},
+              {q:"I went from knowing nothing about chess to beating my dad in 3 months. The roadmap actually works.",name:"Sana, 15",subject:"Learning Chess"},
+            ].map(t=>(
+              <div key={t.name} style={{padding:"20px 22px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10}}>
+                <p style={{fontSize:14,color:"var(--ink2)",lineHeight:1.65,marginBottom:14}}>"{t.q}"</p>
+                <div>
+                  <p style={{fontSize:13,fontWeight:600,color:"var(--ink)"}}>{t.name}</p>
+                  <p style={{fontSize:12,color:"var(--muted)"}}>{t.subject}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Final CTA ── */}
+      <div style={{padding:"72px 24px",textAlign:"center"}}>
+        <h2 style={{fontFamily:"var(--font-display)",fontSize:"clamp(26px,4vw,44px)",fontWeight:400,marginBottom:16,letterSpacing:"-0.02em"}}>
+          Ready to start learning?
+        </h2>
+        <p style={{fontSize:15,color:"var(--muted)",marginBottom:28}}>Join thousands of students building real skills, one day at a time.</p>
+        <button className="btn btn-primary btn-lg row gap-8" style={{margin:"0 auto"}} onClick={onStart}>
+          Build My Roadmap <Icon.ArrowRight/>
+        </button>
+        <p style={{fontSize:12,color:"var(--subtle)",marginTop:12}}>Free · No credit card · Starts in 30 seconds</p>
       </div>
     </div>
   );
