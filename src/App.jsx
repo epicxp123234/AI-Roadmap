@@ -19,13 +19,103 @@ async function askClaude(messages) {
   } catch (e) { console.error("askClaude error:", e); return ""; }
 }
 
-async function getProfile(userId) { const { data } = await supabase.from("profiles").select("*").eq("id", userId).single(); return data; }
-async function upsertProfile(userId, fields) { await supabase.from("profiles").upsert({ id: userId, ...fields }); }
-async function getRoadmap(userId) { const { data } = await supabase.from("roadmaps").select("*").eq("user_id", userId).single(); return data; }
-async function upsertRoadmap(userId, roadmapData, meta={}) { await supabase.from("roadmaps").upsert({ user_id: userId, title: roadmapData.title, data: roadmapData, ...meta }); }
-async function getProgress(userId) { const { data } = await supabase.from("progress").select("*").eq("user_id", userId).single(); return data; }
-async function upsertProgress(userId, fields) { await supabase.from("progress").upsert({ user_id: userId, ...fields, updated_at: new Date().toISOString() }, { onConflict: "user_id" }); }
-async function saveTaskSubmission(userId, data) { await supabase.from("task_submissions").upsert({ user_id: userId, week_key: data.weekKey, career: data.career, task_title: data.taskTitle, answers: data.answers, feedback: data.feedback, submitted_at: new Date().toISOString() }, { onConflict: "user_id,week_key" }); }
+// FIXED VERSION - Replace all these lines with this:
+
+async function getProfile(userId) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) console.error("Get Profile Error:", error);
+  return data;                    // returns null if no profile exists
+}
+
+async function upsertProfile(userId, fields) {
+  const { error } = await supabase
+    .from("profiles")
+    .upsert({ id: userId, ...fields });
+
+  if (error) console.error("Upsert Profile Error:", error);
+}
+
+async function getRoadmap(userId) {
+  const { data, error } = await supabase
+    .from("roadmaps")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) console.error("Get Roadmap Error:", error);
+  return data;
+}
+
+async function upsertRoadmap(userId, roadmapData, meta = {}) {
+  const { error } = await supabase
+    .from("roadmaps")
+    .upsert({ 
+      user_id: userId, 
+      title: roadmapData.title, 
+      data: roadmapData, 
+      ...meta 
+    });
+
+  if (error) console.error("Upsert Roadmap Error:", error);
+}
+
+async function getProgress(userId) {
+  const { data, error } = await supabase
+    .from("progress")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) console.error("Get Progress Error:", error);
+
+  // Return default values if no progress row exists yet
+  if (!data) {
+    return {
+      current_month: 1,
+      current_week: 1,
+      current_day: 1,
+      streak: 0,
+      completed_days: [],
+      last_visit: new Date().toISOString().slice(0, 10)
+    };
+  }
+  return data;
+}
+
+async function upsertProgress(userId, fields) {
+  const { error } = await supabase
+    .from("progress")
+    .upsert(
+      { user_id: userId, ...fields, updated_at: new Date().toISOString() },
+      { onConflict: "user_id" }
+    );
+
+  if (error) console.error("Upsert Progress Error:", error);
+}
+
+async function saveTaskSubmission(userId, data) {
+  const { error } = await supabase
+    .from("task_submissions")
+    .upsert(
+      { 
+        user_id: userId, 
+        week_key: data.weekKey, 
+        career: data.career, 
+        task_title: data.taskTitle, 
+        answers: data.answers, 
+        feedback: data.feedback, 
+        submitted_at: new Date().toISOString() 
+      },
+      { onConflict: "user_id,week_key" }
+    );
+
+  if (error) console.error("Save Task Submission Error:", error);
+}
 
 function dbToProgress(row) {
   if (!row) return { currentMonth:1, currentWeek:1, currentDay:1, streak:0, completedDays:[] };
