@@ -1265,8 +1265,31 @@ Return ONLY this JSON structure, nothing else:
 
 // ── App ───────────────────────────────────────────────────────────────────────
 export default function App() {
-  const[page,setPage]=useState("loading");const[user,setUser]=useState(null);const[profile,setProfile]=useState(null);const[roadmap,setRoadmap]=useState(null);const[progress,setProgress]=useState(null);const[isDemo,setIsDemo]=useState(false);
-  const[showEmailSettings,setShowEmailSettings]=useState(false);const[emailConfigured,setEmailConfigured]=useState(()=>{try{return!!(localStorage.getItem("ejs_service")&&localStorage.getItem("ejs_key"));}catch{return false;}});const[streakAlert,setStreakAlert]=useState(null);
+  const[page,setPage]=useState("loading");
+  const[user,setUser]=useState(null);
+  const[profile,setProfile]=useState(null);
+  const[roadmap,setRoadmap]=useState(null);
+  const[progress,setProgress]=useState(null);
+  const[isDemo,setIsDemo]=useState(false);
+
+  const[showEmailSettings,setShowEmailSettings]=useState(false);
+  const[emailConfigured,setEmailConfigured]=useState(()=>{try{return!!(localStorage.getItem("ejs_service")&&localStorage.getItem("ejs_key"));}catch{return false;}});
+  const[streakAlert,setStreakAlert]=useState(null);
+
+  // Register Service Worker for PWA (Installable App)
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then((registration) => {
+            console.log('✅ Service Worker registered successfully!', registration);
+          })
+          .catch((error) => {
+            console.log('❌ Service Worker registration failed:', error);
+          });
+      });
+    }
+  }, []);
 
   useEffect(()=>{
     const init=async()=>{const{data:{session}}=await supabase.auth.getSession();if(session?.user)await loadUserData(session.user);else setPage("landing");};
