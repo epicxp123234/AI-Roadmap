@@ -116,7 +116,26 @@ async function saveTaskSubmission(userId, data) {
 
   if (error) console.error("Save Task Submission Error:", error);
 }
+async function getCachedLectures(userId, key) {
+  const { data, error } = await supabase
+    .from("lecture_cache")
+    .select("lectures")
+    .eq("user_id", userId)
+    .eq("roadmap_key", key)
+    .maybeSingle();
+  if (error) console.error("Cache get error:", error);
+  return data?.lectures || null;
+}
 
+async function saveCachedLectures(userId, key, lectures) {
+  const { error } = await supabase
+    .from("lecture_cache")
+    .upsert(
+      { user_id: userId, roadmap_key: key, lectures },
+      { onConflict: "user_id,roadmap_key" }
+    );
+  if (error) console.error("Cache save error:", error);
+}
 function dbToProgress(row) {
   if (!row) return { currentMonth:1, currentWeek:1, currentDay:1, streak:0, completedDays:[] };
   return { currentMonth: row.current_month??1, currentWeek: row.current_week??1, currentDay: row.current_day??1, streak: row.streak??0, completedDays: row.completed_days??[], lastVisit: row.last_visit };
@@ -824,31 +843,72 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo, onSignUp }) 
 
   useEffect(()=>{setLectures(null);setActive(0);setAnswer("");setDayDone(false);setShowTask(false);setTaskSteps({});setTaskSubmitted(false);setTaskFeedback("");loadLectures();},[currentMonth,currentWeek,currentDay]);
 
-  const loadLectures=async()=>{
-    setLoading(true);
-    const prompt=`You are a world-class mentor teaching a 14-year-old beginner.
+  const loadLectures = async () => {
+  setLoading(true);
+
+  const cacheKey = `m${currentMonth}w${currentWeek}d${currentDay}`;
+
+  // Check cache first
+  if (!isDemo && user?.id) {
+    const cached = await getCachedLectures(user.id, cacheKey);
+    if (cached && cached.length >= 3) {
+      setLectures(cached);
+      setLoading(false);
+      return;
+    }
+  }
+
+  // Generate via Groq
+  const prompt = `You are a world-class mentor teaching a 14-year-old beginner.
 
 Week topic: "${weekTopic}"
 Subject: "${roadmap.title}"
 Today is Day ${currentDay} of 7 this week.
 
 Each day covers different sub-topics. Day 1 = basics, Day 2 = deeper, Day 3 = application, Day 4 = advanced, Day 5 = mastery.
-For Day ${currentDay}, cover sub-topics ${(currentDay-1)*5+1} to ${currentDay*5} of "${weekTopic}". Do NOT repeat previous days.
+For Day ${currentDay}, cover sub-topics ${(currentDay - 1) * 5 + 1} to ${currentDay * 5} of "${weekTopic}". Do NOT repeat previous days.
 
 Generate EXACTLY 5 lectures. Return ONLY valid JSON. No markdown, no backticks.
 {"lectures":[{"num":1,"title":"Clear concise title","coreIdea":"2-3 sentences explaining the concept simply","example":"Real-world example specific to ${roadmap.title}","action":"One concrete task the student can do today","mistake":"One common beginner mistake","takeaway":"One memorable sentence"},{"num":2,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":3,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":4,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":5,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"...","homework":["Task 1","Task 2"]}]}`;
-    let raw="";
-    try{raw=await askClaude([{role:"user",content:prompt}]);}catch(e){raw="";}
-    if(raw?.trim()){
-      try{
-        let c=raw.trim().replace(/```json|```/gi,"").replace(/,(\s*[}\]])/g,"$1");
-        const m=c.match(/\{[\s\S]*\}/);
-        if(m){const p=JSON.parse(m[0]);const a=p.lectures&&Array.isArray(p.lectures)?p.lectures:[];if(a.length>=3){setLectures(a);setLoading(false);return;}}
-      }catch(e){console.warn("Parse failed:",e.message);}
-    }
-    setLectures(Array.from({length:5},(_,i)=>({num:i+1,title:`${weekTopic} — Part ${i+1}`,coreIdea:`This section covers a key aspect of ${weekTopic} within ${roadmap.title}.`,example:`In ${roadmap.title}, this concept appears when working on real projects.`,action:`Spend 10 minutes applying this to something concrete today.`,mistake:`Beginners often skip this step — don't.`,takeaway:`Mastering this gives you a real edge in ${roadmap.title}.`,homework:i===4?[`Find an example of ${weekTopic} in the real world`,`Apply today's concepts to a small exercise`]:null})));
-    setLoading(false);
-  };
+
+  let raw = "";
+  try {
+    raw = await askClaude([{ role: "user", content: prompt }]);
+  } catch (e) { raw = ""; }
+
+  if (raw?.trim()) {
+    try {
+      let c = raw.trim().replace(/```json|```/gi, "").replace(/,(\s*[}\]])/g, "$1");
+      const m = c.match(/\{[\s\S]*\}/);
+      if (m) {
+        const p = JSON.parse(m[0]);
+        const a = p.lectures && Array.isArray(p.lectures) ? p.lectures : [];
+        if (a.length >= 3) {
+          setLectures(a);
+          // Save to cache
+          if (!isDemo && user?.id) {
+            await saveCachedLectures(user.id, cacheKey, a);
+          }
+          setLoading(false);
+          return;
+        }
+      }
+    } catch (e) { console.warn("Parse failed:", e.message); }
+  }
+
+  // Fallback
+  setLectures(Array.from({ length: 5 }, (_, i) => ({
+    num: i + 1,
+    title: `${weekTopic} — Part ${i + 1}`,
+    coreIdea: `This section covers a key aspect of ${weekTopic} within ${roadmap.title}.`,
+    example: `In ${roadmap.title}, this concept appears when working on real projects.`,
+    action: `Spend 10 minutes applying this to something concrete today.`,
+    mistake: `Beginners often skip this step — don't.`,
+    takeaway: `Mastering this gives you a real edge in ${roadmap.title}.`,
+    homework: i === 4 ? [`Find an example of ${weekTopic} in the real world`, `Apply today's concepts to a small exercise`] : null
+  })));
+  setLoading(false);
+};
 
   const submitDoubt=async()=>{if(!doubt.trim()||loadingDoubt)return;setLoadingDoubt(true);setAnswer("");try{const res=await askClaude([{role:"user",content:`${PROFESSOR_SYSTEM}\n\nStudent is learning "${roadmap.title}", this week: "${weekTopic}". Question: "${doubt}"\n\nAnswer clearly and specifically. Under 150 words.`}]);setAnswer(res||"No response. Please try again.");}catch{setAnswer("Something went wrong.");}setLoadingDoubt(false);};
   const markDone=()=>{setDayDone(true);if(onUpdateProgress)onUpdateProgress({type:"complete_day"});};
