@@ -847,16 +847,25 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo, onSignUp }) 
   setLoading(true);
 
   const cacheKey = `m${currentMonth}w${currentWeek}d${currentDay}`;
+  console.log("🔍 Checking cache for key:", cacheKey);
+  console.log("🔍 user?.id:", user?.id, "isDemo:", isDemo);
 
-  // Check cache first
   if (!isDemo && user?.id) {
     const cached = await getCachedLectures(user.id, cacheKey);
+    console.log("📦 Cache result:", cached);
+    
     if (cached && cached.length >= 3) {
+      console.log("✅ Cache HIT - loading instantly!");
       setLectures(cached);
       setLoading(false);
       return;
+    } else {
+      console.log("❌ Cache MISS - calling Groq...");
     }
+  } else {
+    console.log("⚠️ Skipping cache - isDemo or no user");
   }
+  
 
   // Generate via Groq
   const prompt = `You are a world-class mentor teaching a 14-year-old beginner.
