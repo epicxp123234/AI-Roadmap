@@ -128,12 +128,13 @@ async function getCachedLectures(userId, key) {
 }
 
 async function saveCachedLectures(userId, key, lectures) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("lecture_cache")
     .upsert(
       { user_id: userId, roadmap_key: key, lectures },
       { onConflict: "user_id,roadmap_key" }
     );
+  console.log("💾 Save result:", data, error); // ← add this
   if (error) console.error("Cache save error:", error);
 }
 function dbToProgress(row) {
