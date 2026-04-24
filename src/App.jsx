@@ -19,124 +19,48 @@ async function askClaude(messages) {
   } catch (e) { console.error("askClaude error:", e); return ""; }
 }
 
-// FIXED VERSION - Replace all these lines with this:
-
 async function getProfile(userId) {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", userId)
-    .maybeSingle();
-
+  const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
   if (error) console.error("Get Profile Error:", error);
-  return data;                    // returns null if no profile exists
+  return data;
 }
-
 async function upsertProfile(userId, fields) {
-  const { error } = await supabase
-    .from("profiles")
-    .upsert({ id: userId, ...fields });
-
+  const { error } = await supabase.from("profiles").upsert({ id: userId, ...fields });
   if (error) console.error("Upsert Profile Error:", error);
 }
-
 async function getRoadmap(userId) {
-  const { data, error } = await supabase
-    .from("roadmaps")
-    .select("*")
-    .eq("user_id", userId)
-    .maybeSingle();
-
+  const { data, error } = await supabase.from("roadmaps").select("*").eq("user_id", userId).maybeSingle();
   if (error) console.error("Get Roadmap Error:", error);
   return data;
 }
-
 async function upsertRoadmap(userId, roadmapData, meta = {}) {
-  const { error } = await supabase
-    .from("roadmaps")
-    .upsert({ 
-      user_id: userId, 
-      title: roadmapData.title, 
-      data: roadmapData, 
-      ...meta 
-    });
-
+  const { error } = await supabase.from("roadmaps").upsert({ user_id: userId, title: roadmapData.title, data: roadmapData, ...meta });
   if (error) console.error("Upsert Roadmap Error:", error);
 }
-
 async function getProgress(userId) {
-  const { data, error } = await supabase
-    .from("progress")
-    .select("*")
-    .eq("user_id", userId)
-    .maybeSingle();
-
+  const { data, error } = await supabase.from("progress").select("*").eq("user_id", userId).maybeSingle();
   if (error) console.error("Get Progress Error:", error);
-
-  // Return default values if no progress row exists yet
-  if (!data) {
-    return {
-      current_month: 1,
-      current_week: 1,
-      current_day: 1,
-      streak: 0,
-      completed_days: [],
-      last_visit: new Date().toISOString().slice(0, 10)
-    };
-  }
+  if (!data) return { current_month: 1, current_week: 1, current_day: 1, streak: 0, completed_days: [], last_visit: new Date().toISOString().slice(0, 10) };
   return data;
 }
-
 async function upsertProgress(userId, fields) {
-  const { error } = await supabase
-    .from("progress")
-    .upsert(
-      { user_id: userId, ...fields, updated_at: new Date().toISOString() },
-      { onConflict: "user_id" }
-    );
-
+  const { error } = await supabase.from("progress").upsert({ user_id: userId, ...fields, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
   if (error) console.error("Upsert Progress Error:", error);
 }
-
 async function saveTaskSubmission(userId, data) {
-  const { error } = await supabase
-    .from("task_submissions")
-    .upsert(
-      { 
-        user_id: userId, 
-        week_key: data.weekKey, 
-        career: data.career, 
-        task_title: data.taskTitle, 
-        answers: data.answers, 
-        feedback: data.feedback, 
-        submitted_at: new Date().toISOString() 
-      },
-      { onConflict: "user_id,week_key" }
-    );
-
+  const { error } = await supabase.from("task_submissions").upsert({ user_id: userId, week_key: data.weekKey, career: data.career, task_title: data.taskTitle, answers: data.answers, feedback: data.feedback, submitted_at: new Date().toISOString() }, { onConflict: "user_id,week_key" });
   if (error) console.error("Save Task Submission Error:", error);
 }
 async function getCachedLectures(userId, key) {
-  const { data, error } = await supabase
-    .from("lecture_cache")
-    .select("lectures")
-    .eq("user_id", userId)
-    .eq("roadmap_key", key)
-    .maybeSingle();
+  const { data, error } = await supabase.from("lecture_cache").select("lectures").eq("user_id", userId).eq("roadmap_key", key).maybeSingle();
   if (error) console.error("Cache get error:", error);
   return data?.lectures || null;
 }
-
 async function saveCachedLectures(userId, key, lectures) {
-  const { data, error } = await supabase
-    .from("lecture_cache")
-    .upsert(
-      { user_id: userId, roadmap_key: key, lectures },
-      { onConflict: "user_id,roadmap_key" }
-    );
-  console.log("💾 Save result:", data, error); // ← add this
+  const { error } = await supabase.from("lecture_cache").upsert({ user_id: userId, roadmap_key: key, lectures }, { onConflict: "user_id,roadmap_key" });
   if (error) console.error("Cache save error:", error);
 }
+
 function dbToProgress(row) {
   if (!row) return { currentMonth:1, currentWeek:1, currentDay:1, streak:0, completedDays:[] };
   return { currentMonth: row.current_month??1, currentWeek: row.current_week??1, currentDay: row.current_day??1, streak: row.streak??0, completedDays: row.completed_days??[], lastVisit: row.last_visit };
@@ -154,7 +78,7 @@ async function sendStreakLostEmail(userName, userEmail, streak) {
   } catch(e) { return false; }
 }
 
-// ── Icons ─────────────────────────────────────────────────────────────────────
+// ── Icons ──────────────────────────────────────────────────────────────────
 const Icon = {
   Map: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>,
   BookOpen: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>,
@@ -180,113 +104,128 @@ const Icon = {
   Loader: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{animation:"spin 1s linear infinite"}}><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>,
 };
 
-// ── CSS ───────────────────────────────────────────────────────────────────────
+// ── CSS ────────────────────────────────────────────────────────────────────
 const css = `
-  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Serif+Display:ital@0;1&display=swap');
-
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
   :root {
-    --bg: #FAFAFA;
-    --surface: #FFFFFF;
-    --surface2: #F4F4F5;
-    --border: #E4E4E7;
-    --border-strong: #D1D1D6;
-    --ink: #09090B;
-    --ink2: #3F3F46;
-    --muted: #71717A;
-    --subtle: #A1A1AA;
-    --accent: #18181B;
-    --gold: #B45309;
-    --gold-light: #FEF3C7;
-    --gold-border: #F59E0B;
-    --emerald: #059669;
-    --emerald-light: #D1FAE5;
-    --ember: #DC2626;
-    --ember-light: #FEE2E2;
-    --blue: #2563EB;
-    --blue-light: #DBEAFE;
-    --shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
-    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
-    --shadow-md: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.06);
-    --shadow-lg: 0 10px 15px rgba(0,0,0,0.08), 0 4px 6px rgba(0,0,0,0.05);
-    --r: 8px;
+    --bg: #080A0F;
+    --bg2: #0D1117;
+    --surface: #111520;
+    --surface2: #161B27;
+    --surface3: #1C2333;
+    --border: rgba(255,255,255,0.07);
+    --border-strong: rgba(255,255,255,0.14);
+    --ink: #F0F4FF;
+    --ink2: #A8B4CC;
+    --muted: #5A6680;
+    --subtle: #3A4459;
+    --accent: #6C8EFF;
+    --accent2: #8B5CF6;
+    --accent-glow: rgba(108,142,255,0.15);
+    --gold: #F59E0B;
+    --gold-light: rgba(245,158,11,0.12);
+    --gold-border: rgba(245,158,11,0.35);
+    --emerald: #10B981;
+    --emerald-light: rgba(16,185,129,0.12);
+    --ember: #EF4444;
+    --ember-light: rgba(239,68,68,0.12);
+    --blue: #6C8EFF;
+    --blue-light: rgba(108,142,255,0.12);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
+    --shadow: 0 4px 12px rgba(0,0,0,0.5);
+    --shadow-md: 0 8px 24px rgba(0,0,0,0.6);
+    --shadow-lg: 0 20px 48px rgba(0,0,0,0.7);
+    --shadow-glow: 0 0 40px rgba(108,142,255,0.1);
+    --r: 10px;
     --font: 'DM Sans', system-ui, sans-serif;
-    --font-display: 'DM Serif Display', Georgia, serif;
+    --font-display: 'Syne', system-ui, sans-serif;
   }
-
   body { font-family: var(--font); background: var(--bg); color: var(--ink); min-height: 100vh; width: 100%; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
-  #root { width: 100%; }
-
-  h1, h2, h3 { letter-spacing: -0.02em; }
-  h1 { font-family: var(--font-display); }
+  #root { width: 100%; position: relative; z-index: 1; }
+  h1, h2, h3 { letter-spacing: -0.02em; font-family: var(--font-display); }
 
   @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
+  @keyframes float { 0%,100% { transform: translateY(0px); } 50% { transform: translateY(-14px); } }
+  @keyframes float2 { 0%,100% { transform: translateY(0px) rotate(0deg); } 50% { transform: translateY(-10px) rotate(5deg); } }
+  @keyframes glow-pulse { 0%,100% { opacity: 0.35; } 50% { opacity: 0.75; } }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+  @keyframes gradient-x { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
 
-  .page { animation: fadeUp 0.4s cubic-bezier(0.22,1,0.36,1) both; }
+  .page { animation: fadeUp 0.5s cubic-bezier(0.22,1,0.36,1) both; }
 
   /* Nav */
   .nav {
     position: sticky; top: 0; z-index: 100;
-    height: 58px; padding: 0 32px;
-    background: rgba(250,250,250,0.9); backdrop-filter: blur(12px);
+    height: 60px; padding: 0 32px;
+    background: rgba(8,10,15,0.85);
+    backdrop-filter: blur(20px);
     border-bottom: 1px solid var(--border);
     display: flex; align-items: center; justify-content: space-between;
   }
-  .nav-logo { font-family: var(--font); font-weight: 700; font-size: 15px; color: var(--ink); letter-spacing: -0.3px; display: flex; align-items: center; gap: 6px; }
-  .nav-logo-dot { width: 6px; height: 6px; background: var(--gold-border); border-radius: 50%; }
+  .nav::after {
+    content: ''; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 180px; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0.5;
+  }
+  .nav-logo { font-family: var(--font-display); font-weight: 800; font-size: 16px; color: var(--ink); letter-spacing: -0.5px; display: flex; align-items: center; gap: 8px; }
+  .nav-logo-dot { width: 8px; height: 8px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 12px var(--accent); animation: glow-pulse 2s ease-in-out infinite; }
 
   /* Buttons */
-  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-family: var(--font); font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.15s; border: none; border-radius: var(--r); outline: none; white-space: nowrap; }
-  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-family: var(--font); font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s cubic-bezier(0.22,1,0.36,1); border: none; border-radius: var(--r); outline: none; white-space: nowrap; position: relative; overflow: hidden; }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
-  .btn-primary { background: var(--ink); color: #fff; padding: 10px 18px; box-shadow: var(--shadow-sm); }
-  .btn-primary:hover:not(:disabled) { background: #27272A; box-shadow: var(--shadow); }
-  .btn-primary:active:not(:disabled) { background: #3F3F46; }
+  .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; padding: 10px 20px; box-shadow: 0 4px 20px rgba(108,142,255,0.25); }
+  .btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 30px rgba(108,142,255,0.35); }
+  .btn-primary:active:not(:disabled) { transform: translateY(0); }
 
-  .btn-secondary { background: var(--surface); color: var(--ink2); padding: 10px 18px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
-  .btn-secondary:hover:not(:disabled) { background: var(--surface2); border-color: var(--border-strong); }
+  .btn-secondary { background: var(--surface2); color: var(--ink2); padding: 10px 20px; border: 1px solid var(--border); }
+  .btn-secondary:hover:not(:disabled) { background: var(--surface3); border-color: var(--border-strong); color: var(--ink); transform: translateY(-1px); }
 
   .btn-ghost { background: transparent; color: var(--muted); padding: 8px 12px; }
   .btn-ghost:hover:not(:disabled) { background: var(--surface2); color: var(--ink2); }
 
-  .btn-gold { background: var(--gold); color: #fff; padding: 10px 18px; box-shadow: var(--shadow-sm); }
-  .btn-gold:hover:not(:disabled) { background: #92400E; }
+  .btn-gold { background: linear-gradient(135deg, #F59E0B, #D97706); color: #000; padding: 10px 20px; font-weight: 600; box-shadow: 0 4px 20px rgba(245,158,11,0.25); }
+  .btn-gold:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 30px rgba(245,158,11,0.35); }
 
-  .btn-lg { padding: 13px 24px; font-size: 15px; border-radius: 10px; }
-  .btn-sm { padding: 7px 13px; font-size: 13px; }
-  .btn-icon { padding: 8px; border-radius: 6px; }
+  .btn-lg { padding: 14px 28px; font-size: 15px; border-radius: 12px; }
+  .btn-sm { padding: 7px 14px; font-size: 13px; }
+  .btn-icon { padding: 8px; border-radius: 8px; }
 
   /* Cards */
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow); transition: border-color 0.2s, box-shadow 0.2s; }
+  .card:hover { border-color: var(--border-strong); }
   .card-p { padding: 24px; }
   .card-p-lg { padding: 32px; }
+  .card-3d { transition: transform 0.3s cubic-bezier(0.22,1,0.36,1), box-shadow 0.3s; }
+  .card-3d:hover { transform: perspective(1000px) rotateX(2deg) rotateY(1deg) translateZ(4px); box-shadow: var(--shadow-md), var(--shadow-glow); }
 
   /* Form */
-  .field { display: flex; flex-direction: column; gap: 5px; }
-  .label { font-size: 13px; font-weight: 500; color: var(--ink2); }
-  .input { border: 1px solid var(--border); border-radius: var(--r); padding: 9px 13px; font-family: var(--font); font-size: 14px; color: var(--ink); background: var(--surface); outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
-  .input:focus { border-color: var(--ink); box-shadow: 0 0 0 3px rgba(9,9,11,0.08); }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .input { border: 1px solid var(--border); border-radius: var(--r); padding: 10px 14px; font-family: var(--font); font-size: 14px; color: var(--ink); background: var(--surface2); outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
+  .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(108,142,255,0.12); }
   .input::placeholder { color: var(--subtle); }
   textarea.input { resize: vertical; min-height: 88px; line-height: 1.6; }
   select.input { cursor: pointer; }
+  select.input option { background: var(--surface2); color: var(--ink); }
 
   /* Badge */
-  .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; }
-  .badge-gold { background: var(--gold-light); color: var(--gold); border: 1px solid #FDE68A; }
-  .badge-green { background: var(--emerald-light); color: var(--emerald); }
-  .badge-red { background: var(--ember-light); color: var(--ember); }
-  .badge-blue { background: var(--blue-light); color: var(--blue); }
+  .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.03em; }
+  .badge-gold { background: var(--gold-light); color: var(--gold); border: 1px solid var(--gold-border); }
+  .badge-green { background: var(--emerald-light); color: var(--emerald); border: 1px solid rgba(16,185,129,0.25); }
+  .badge-red { background: var(--ember-light); color: var(--ember); border: 1px solid rgba(239,68,68,0.25); }
+  .badge-blue { background: var(--blue-light); color: var(--blue); border: 1px solid rgba(108,142,255,0.25); }
   .badge-neutral { background: var(--surface2); color: var(--ink2); border: 1px solid var(--border); }
 
   /* Progress */
-  .progress-track { background: var(--surface2); border-radius: 999px; overflow: hidden; }
-  .progress-fill { height: 100%; border-radius: 999px; background: var(--ink); transition: width 0.6s cubic-bezier(0.22,1,0.36,1); }
-  .progress-fill-gold { background: var(--gold-border); }
-  .progress-fill-green { background: var(--emerald); }
+  .progress-track { background: var(--surface3); border-radius: 999px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width 0.6s cubic-bezier(0.22,1,0.36,1); box-shadow: 0 0 10px rgba(108,142,255,0.3); }
+  .progress-fill-gold { background: linear-gradient(90deg, #F59E0B, #D97706); box-shadow: 0 0 10px rgba(245,158,11,0.3); }
+  .progress-fill-green { background: linear-gradient(90deg, #10B981, #059669); box-shadow: 0 0 10px rgba(16,185,129,0.3); }
 
   /* Layout */
   .container { max-width: 860px; margin: 0 auto; padding: 0 24px; }
@@ -296,82 +235,79 @@ const css = `
   .gap-2{gap:2px}.gap-4{gap:4px}.gap-6{gap:6px}.gap-8{gap:8px}.gap-10{gap:10px}.gap-12{gap:12px}.gap-16{gap:16px}.gap-20{gap:20px}.gap-24{gap:24px}.gap-32{gap:32px}
 
   /* Divider */
-  .divider { display: flex; align-items: center; gap: 12px; color: var(--subtle); font-size: 13px; }
-  .divider::before,.divider::after { content:""; flex:1; height:1px; background: var(--border); }
+  .divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 13px; }
+  .divider::before,.divider::after { content:""; flex:1; height:1px; background: linear-gradient(90deg, transparent, var(--border), transparent); }
 
-  /* Skeleton loader */
-  .skeleton { background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 4px; }
-  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
-
-  /* Spinner */
-  .spinner { animation: spin 0.8s linear infinite; }
+  /* Skeleton */
+  .skeleton { background: linear-gradient(90deg, var(--surface2) 25%, var(--surface3) 50%, var(--surface2) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 4px; }
 
   /* Stat card */
   .stat-card { padding: 20px 24px; }
-  .stat-label { font-size: 12px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
-  .stat-value { font-size: 28px; font-weight: 700; color: var(--ink); letter-spacing: -0.03em; line-height: 1; }
-  .stat-sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .stat-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+  .stat-value { font-size: 30px; font-weight: 800; color: var(--ink); letter-spacing: -0.04em; line-height: 1; font-family: var(--font-display); }
+  .stat-sub { font-size: 12px; color: var(--muted); margin-top: 6px; }
 
-  /* Section header */
-  .section-tag { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .section-tag { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
 
-  /* Lecture content */
-  .lec-block { padding: 16px 20px; border-radius: var(--r); border: 1px solid var(--border); margin-bottom: 12px; }
-  .lec-block-green { background: #F0FDF4; border-color: #BBF7D0; }
-  .lec-block-red { background: #FFF5F5; border-color: #FECACA; }
-  .lec-block-blue { background: #EFF6FF; border-color: #BFDBFE; }
-  .lec-block-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+  /* Lecture blocks */
+  .lec-block { padding: 16px 20px; border-radius: var(--r); border: 1px solid var(--border); margin-bottom: 12px; transition: border-color 0.2s; }
+  .lec-block:hover { border-color: var(--border-strong); }
+  .lec-block-green { background: rgba(16,185,129,0.05); border-color: rgba(16,185,129,0.2); }
+  .lec-block-red { background: rgba(239,68,68,0.05); border-color: rgba(239,68,68,0.2); }
+  .lec-block-blue { background: rgba(108,142,255,0.05); border-color: rgba(108,142,255,0.2); }
+  .lec-block-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
   .lec-block-label-green { color: var(--emerald); }
   .lec-block-label-red { color: var(--ember); }
-  .lec-block-label-blue { color: var(--blue); }
+  .lec-block-label-blue { color: var(--accent); }
   .lec-block-label-gold { color: var(--gold); }
   .lec-text { font-size: 15px; line-height: 1.75; color: var(--ink2); }
 
   /* Answer box */
-  .answer-box { margin-top: 16px; padding: 16px 20px; background: #F8FAFC; border: 1px solid var(--border); border-left: 3px solid var(--ink); border-radius: var(--r); font-size: 15px; line-height: 1.75; color: var(--ink2); white-space: pre-wrap; }
+  .answer-box { margin-top: 16px; padding: 16px 20px; background: var(--surface2); border: 1px solid var(--border); border-left: 2px solid var(--accent); border-radius: var(--r); font-size: 15px; line-height: 1.75; color: var(--ink2); white-space: pre-wrap; }
 
-  /* Nav link active */
-  .nav-link { font-size: 14px; font-weight: 400; color: var(--muted); background: none; border: none; cursor: pointer; padding: 6px 10px; border-radius: 6px; font-family: var(--font); transition: all 0.15s; }
+  /* Nav links */
+  .nav-link { font-size: 14px; font-weight: 400; color: var(--muted); background: none; border: none; cursor: pointer; padding: 6px 12px; border-radius: 8px; font-family: var(--font); transition: all 0.15s; }
   .nav-link:hover { color: var(--ink); background: var(--surface2); }
-  .nav-link.active { color: var(--ink); font-weight: 500; background: var(--surface2); }
+  .nav-link.active { color: var(--ink); font-weight: 600; background: var(--surface2); border: 1px solid var(--border); }
 
-  /* MCQ option */
-  .mcq-option { display: block; width: 100%; text-align: left; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); font-family: var(--font); font-size: 14px; color: var(--ink2); cursor: pointer; transition: all 0.12s; }
-  .mcq-option:hover { border-color: var(--border-strong); background: var(--surface2); }
-  .mcq-option.selected { border-color: var(--ink); background: var(--surface2); color: var(--ink); font-weight: 500; }
+  /* MCQ */
+  .mcq-option { display: block; width: 100%; text-align: left; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--r); background: var(--surface2); font-family: var(--font); font-size: 14px; color: var(--ink2); cursor: pointer; transition: all 0.15s; }
+  .mcq-option:hover { border-color: var(--accent); color: var(--ink); background: var(--surface3); }
+  .mcq-option.selected { border-color: var(--accent); background: rgba(108,142,255,0.1); color: var(--ink); font-weight: 500; }
   .mcq-option.correct { border-color: var(--emerald); background: var(--emerald-light); color: var(--emerald); }
   .mcq-option.wrong { border-color: var(--ember); background: var(--ember-light); color: var(--ember); }
 
-  /* Hero */
-  .hero { min-height: calc(100vh - 58px); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 80px 24px; position: relative; overflow: hidden; }
-  .hero-grid { position: absolute; inset: 0; background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 48px 48px; opacity: 0.5; }
-  .hero-glow { position: absolute; width: 600px; height: 300px; background: radial-gradient(ellipse at center, rgba(180,83,9,0.08) 0%, transparent 70%); top: 20%; left: 50%; transform: translateX(-50%); pointer-events: none; }
+  /* Hero + Orbs */
+  .hero { min-height: calc(100vh - 60px); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 80px 24px; position: relative; overflow: hidden; }
+  .hero-grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px); background-size: 60px 60px; mask-image: radial-gradient(ellipse at center, black 0%, transparent 70%); pointer-events: none; }
+  .hero-glow { position: absolute; width: 700px; height: 500px; background: radial-gradient(ellipse, rgba(108,142,255,0.07) 0%, transparent 65%); top: -80px; left: 50%; transform: translateX(-50%); pointer-events: none; animation: glow-pulse 4s ease-in-out infinite; }
+  .orb { position: absolute; border-radius: 50%; pointer-events: none; }
+  .orb-1 { width: 90px; height: 90px; background: radial-gradient(135deg, rgba(108,142,255,0.25), rgba(139,92,246,0.08)); border: 1px solid rgba(108,142,255,0.18); top: 18%; right: 12%; animation: float 7s ease-in-out infinite; box-shadow: inset 0 0 20px rgba(108,142,255,0.08), 0 0 30px rgba(108,142,255,0.08); }
+  .orb-2 { width: 55px; height: 55px; background: radial-gradient(135deg, rgba(245,158,11,0.22), rgba(245,158,11,0.04)); border: 1px solid rgba(245,158,11,0.18); top: 32%; left: 8%; animation: float2 8s ease-in-out infinite; box-shadow: 0 0 20px rgba(245,158,11,0.08); }
+  .orb-3 { width: 130px; height: 130px; background: radial-gradient(135deg, rgba(16,185,129,0.12), transparent); border: 1px solid rgba(16,185,129,0.1); bottom: 18%; right: 6%; animation: float 9s ease-in-out infinite 2s; }
+  .orb-4 { width: 38px; height: 38px; background: radial-gradient(135deg, rgba(139,92,246,0.35), rgba(108,142,255,0.1)); border: 1px solid rgba(139,92,246,0.25); bottom: 28%; left: 12%; animation: float2 6s ease-in-out infinite 1s; box-shadow: 0 0 20px rgba(139,92,246,0.15); }
 
   /* Feature grid */
-  .feature-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-top: 64px; width: 100%; max-width: 780px; }
-  .feature-item { background: var(--surface); padding: 28px 24px; transition: background 0.15s; }
+  .feature-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; margin-top: 64px; width: 100%; max-width: 780px; }
+  .feature-item { background: var(--surface); padding: 28px 24px; transition: background 0.2s; }
   .feature-item:hover { background: var(--surface2); }
-  .feature-item-icon { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--ink2); margin-bottom: 14px; }
+  .feature-item-icon { width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; color: var(--accent); margin-bottom: 14px; }
   .feature-item-title { font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
-  .feature-item-desc { font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .feature-item-desc { font-size: 13px; color: var(--muted); line-height: 1.55; }
 
   /* Demo banner */
-  .demo-banner { background: var(--ink); color: #fff; padding: 10px 24px; display: flex; align-items: center; justify-content: center; gap: 16px; font-size: 13px; }
+  .demo-banner { background: linear-gradient(90deg, var(--surface), var(--surface2), var(--surface)); border-bottom: 1px solid var(--border); padding: 10px 24px; display: flex; align-items: center; justify-content: center; gap: 16px; font-size: 13px; color: var(--ink2); }
 
-  /* Sidebar lecture list */
-  .lec-list-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 6px; cursor: pointer; transition: background 0.12s; font-size: 13px; color: var(--muted); border: 1px solid transparent; text-align: left; background: none; width: 100%; font-family: var(--font); }
+  /* Lecture sidebar */
+  .lec-list-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 8px; cursor: pointer; transition: all 0.15s; font-size: 13px; color: var(--muted); border: 1px solid transparent; text-align: left; background: none; width: 100%; font-family: var(--font); }
   .lec-list-item:hover { background: var(--surface2); color: var(--ink2); }
   .lec-list-item.active { background: var(--surface2); border-color: var(--border); color: var(--ink); font-weight: 500; }
-  .lec-num { width: 20px; height: 20px; border-radius: 50%; background: var(--surface2); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: var(--muted); flex-shrink: 0; }
-  .lec-list-item.active .lec-num { background: var(--ink); border-color: var(--ink); color: #fff; }
-
-  /* Task step */
-  .task-step { counter-increment: step; }
-  .task-step-num { width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: var(--muted); flex-shrink: 0; }
+  .lec-num { width: 22px; height: 22px; border-radius: 50%; background: var(--surface3); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--muted); flex-shrink: 0; }
+  .lec-list-item.active .lec-num { background: linear-gradient(135deg, var(--accent), var(--accent2)); border-color: transparent; color: #fff; box-shadow: 0 0 12px rgba(108,142,255,0.35); }
 
   /* Google button */
-  .btn-google { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 10px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); font-family: var(--font); font-size: 14px; font-weight: 500; color: var(--ink2); cursor: pointer; transition: all 0.15s; box-shadow: var(--shadow-sm); }
-  .btn-google:hover { background: var(--surface2); border-color: var(--border-strong); }
+  .btn-google { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 11px 18px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--r); font-family: var(--font); font-size: 14px; font-weight: 500; color: var(--ink2); cursor: pointer; transition: all 0.15s; }
+  .btn-google:hover { background: var(--surface3); border-color: var(--border-strong); color: var(--ink); }
 
   @media(max-width:768px) {
     .nav { padding: 0 16px; }
@@ -379,14 +315,15 @@ const css = `
     .feature-grid { grid-template-columns: repeat(2,1fr); }
     .card-p-lg { padding: 20px; }
     .hero { padding: 60px 16px; }
+    .orb { display: none; }
   }
   @media(max-width:480px) {
     .feature-grid { grid-template-columns: 1fr; }
-    .stat-value { font-size: 22px; }
+    .stat-value { font-size: 24px; }
   }
 `;
 
-// ── DB helpers ────────────────────────────────────────────────────────────────
+// ── DB helpers ─────────────────────────────────────────────────────────────
 function buildFallback(form) {
   const career=form.career||"your chosen field"; const lc=career.toLowerCase();
   const careerThemes={entrepreneur:["Business Foundations","Market Research","Building Your Product","Marketing & Sales","Finance & Operations","Scaling & Growth"],coding:["Programming Basics","Data Structures","Web Development","Databases & APIs","Projects & Portfolio","Job Preparation"],chess:["Chess Basics","Tactics & Puzzles","Opening Principles","Middlegame Strategy","Endgame Mastery","Tournament Preparation"],art:["Drawing Fundamentals","Color Theory","Digital Art","Illustration","Style Development","Portfolio & Career"],music:["Music Theory Basics","Instrument Fundamentals","Scales & Chords","Composition","Production","Performance & Career"]};
@@ -397,22 +334,22 @@ function buildFallback(form) {
 }
 
 const DEMO_THEMES=["Business Foundations","Market Research","Building Your Product","Marketing & Sales","Finance & Operations","Scaling & Growth"];
-const DEMO_ROADMAP={title:"Entrepreneurship — Demo Roadmap",months:Array.from({length:6},(_,mi)=>({month:mi+1,theme:DEMO_THEMES[mi],focus:`Month ${mi+1}: ${DEMO_THEMES[mi]}`,weeks:Array.from({length:4},(_,wi)=>({week:wi+1,goal:`Week ${wi+1} — ${DEMO_THEMES[mi]}`,days:Array.from({length:7},(_,di)=>({day:di+1,task:di===6?`Review Week ${wi+1}`:`${DEMO_THEMES[mi]}: sub-topic ${di+1}`})),testTopic:DEMO_THEMES[mi]}))}))};
+const DEMO_ROADMAP={title:"Entrepreneurship — Demo Roadmap",months:Array.from({length:6},(_,mi)=>({month:mi+1,theme:DEMO_THEMES[mi],focus:`Month ${mi+1}: ${DEMO_THEMES[mi]}`,weeks:Array.from({length:4},(_,wi=>({week:wi+1,goal:`Week ${wi+1} — ${DEMO_THEMES[mi]}`,days:Array.from({length:7},(_,di)=>({day:di+1,task:di===6?`Review Week ${wi+1}`:`${DEMO_THEMES[mi]}: sub-topic ${di+1}`})),testTopic:DEMO_THEMES[mi]})))}))};
 const DEMO_PROGRESS={currentMonth:1,currentWeek:1,currentDay:1,streak:3,completedDays:["m1w1d1","m1w1d2","m1w1d3"]};
 
-// ── Email Modal ───────────────────────────────────────────────────────────────
-function EmailSettingsModal({ onClose, userEmail, userName }) {
+// ── Email Modal ────────────────────────────────────────────────────────────
+function EmailSettingsModal({ onClose }) {
   const [svc,setSvc]=useState(localStorage.getItem("ejs_service")||"");
   const [tpl,setTpl]=useState(localStorage.getItem("ejs_template")||"");
   const [key,setKey]=useState(localStorage.getItem("ejs_key")||"");
   const [saved,setSaved]=useState(false);
   const save=()=>{localStorage.setItem("ejs_service",svc);localStorage.setItem("ejs_template",tpl);localStorage.setItem("ejs_key",key);EJS.serviceId=svc;EJS.templateId=tpl;EJS.publicKey=key;setSaved(true);setTimeout(()=>setSaved(false),2000);};
   return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:20,backdropFilter:"blur(8px)"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div className="card card-p-lg" style={{width:"100%",maxWidth:460}}>
         <div className="row gap-8" style={{justifyContent:"space-between",marginBottom:20}}>
           <div>
-            <h3 style={{fontSize:16,fontWeight:600,marginBottom:2}}>Email Reminders</h3>
+            <h3 style={{fontSize:16,fontWeight:700,marginBottom:2}}>Email Reminders</h3>
             <p style={{fontSize:13,color:"var(--muted)"}}>Get notified when you miss a day</p>
           </div>
           <button className="btn btn-ghost btn-icon" onClick={onClose}><Icon.X/></button>
@@ -423,7 +360,7 @@ function EmailSettingsModal({ onClose, userEmail, userName }) {
           <div className="field"><label className="label">Public Key</label><input className="input" placeholder="AbCdEfGhIj" value={key} onChange={e=>setKey(e.target.value)}/></div>
         </div>
         <div className="row gap-8" style={{marginTop:20}}>
-          <button className="btn btn-primary" onClick={save} style={{flex:1}}>{saved?"Saved":"Save Settings"}</button>
+          <button className="btn btn-primary" onClick={save} style={{flex:1}}>{saved?"✓ Saved":"Save Settings"}</button>
           <button className="btn btn-secondary" onClick={onClose} style={{flex:1}}>Cancel</button>
         </div>
       </div>
@@ -431,7 +368,7 @@ function EmailSettingsModal({ onClose, userEmail, userName }) {
   );
 }
 
-// ── Nav ───────────────────────────────────────────────────────────────────────
+// ── Nav ────────────────────────────────────────────────────────────────────
 function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, emailConfigured, isDemo, onSignUp }) {
   return (
     <nav className="nav">
@@ -466,95 +403,79 @@ function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, emailConfigured
   );
 }
 
-// ── Landing ───────────────────────────────────────────────────────────────────
+// ── Landing ────────────────────────────────────────────────────────────────
 function Landing({ onStart, onDemo }) {
   const [typed, setTyped] = useState("");
   const [focused, setFocused] = useState(false);
   const examples = ["Chess","Web Development","Digital Art","Entrepreneurship","Music Production","Graphic Design"];
   const [exIdx, setExIdx] = useState(0);
-
-  // Cycle placeholder examples
-  useEffect(() => {
-    const t = setInterval(() => setExIdx(i => (i + 1) % examples.length), 2200);
-    return () => clearInterval(t);
-  }, []);
+  useEffect(() => { const t = setInterval(() => setExIdx(i => (i + 1) % examples.length), 2200); return () => clearInterval(t); }, []);
 
   const features = [
-    { icon: <Icon.Map/>, title: "Know exactly what to study every day", desc: "A structured 6-month roadmap built specifically around your goal — no guessing, no Googling." },
-    { icon: <Icon.BookOpen/>, title: "5 short lessons daily — real depth, no overwhelm", desc: "Each lecture is focused, engaging, and written for how you actually learn." },
-    { icon: <Icon.Brain/>, title: "Ask anything. Get a real answer in seconds", desc: "Professor Max knows your topic and explains it like a knowledgeable friend — not a textbook." },
-    { icon: <Icon.CheckSquare/>, title: "Prove what you know — not just what you read", desc: "25-question weekly tests that show you exactly where you stand." },
-    { icon: <Icon.BarChart/>, title: "See yourself getting better, day by day", desc: "Visual progress that actually means something — not vanity metrics." },
-    { icon: <Icon.Flame/>, title: "Build a learning habit that actually sticks", desc: "Streaks, momentum, and structure that keep you coming back." },
+    { icon: <Icon.Map/>, title: "Know exactly what to study every day", desc: "A structured 6-month roadmap built specifically around your goal — no guessing." },
+    { icon: <Icon.BookOpen/>, title: "5 short lessons daily — real depth", desc: "Each lecture is focused, engaging, and written for how you actually learn." },
+    { icon: <Icon.Brain/>, title: "Ask anything. Get a real answer.", desc: "Professor Max knows your topic and explains it like a knowledgeable friend." },
+    { icon: <Icon.CheckSquare/>, title: "Prove what you know", desc: "25-question weekly tests that show you exactly where you stand." },
+    { icon: <Icon.BarChart/>, title: "See yourself getting better", desc: "Visual progress that actually means something — not vanity metrics." },
+    { icon: <Icon.Flame/>, title: "Build a habit that sticks", desc: "Streaks, momentum, and structure that keep you coming back." },
   ];
 
   return (
-    <div style={{minHeight:"calc(100vh - 58px)",display:"flex",flexDirection:"column",alignItems:"center",background:"var(--bg)",overflow:"hidden"}}>
-
-      {/* ── Hero ── */}
+    <div style={{minHeight:"calc(100vh - 60px)",display:"flex",flexDirection:"column",alignItems:"center",background:"var(--bg)",overflow:"hidden"}}>
+      {/* Hero */}
       <div style={{width:"100%",maxWidth:1100,padding:"80px 24px 64px",display:"flex",flexDirection:"column",alignItems:"center",textAlign:"center",position:"relative"}}>
-
-        {/* Subtle radial glow */}
-        <div style={{position:"absolute",top:"-10%",left:"50%",transform:"translateX(-50%)",width:700,height:400,background:"radial-gradient(ellipse at center, rgba(180,83,9,0.07) 0%, transparent 65%)",pointerEvents:"none"}}/>
+        <div className="hero-grid"/>
+        <div className="hero-glow"/>
+        <div className="orb orb-1"/><div className="orb orb-2"/><div className="orb orb-3"/><div className="orb orb-4"/>
 
         {/* Badge */}
-        <div style={{display:"inline-flex",alignItems:"center",gap:8,padding:"5px 14px",borderRadius:999,background:"var(--gold-light)",border:"1px solid #FDE68A",fontSize:12,fontWeight:600,color:"var(--gold)",marginBottom:28,letterSpacing:"0.04em"}}>
-          <span style={{width:6,height:6,borderRadius:"50%",background:"var(--gold-border)",display:"inline-block"}}/>
+        <div style={{display:"inline-flex",alignItems:"center",gap:8,padding:"5px 14px",borderRadius:999,background:"var(--gold-light)",border:"1px solid var(--gold-border)",fontSize:12,fontWeight:600,color:"var(--gold)",marginBottom:28,letterSpacing:"0.04em",position:"relative",zIndex:1}}>
+          <span style={{width:6,height:6,borderRadius:"50%",background:"var(--gold)",display:"inline-block",boxShadow:"0 0 8px var(--gold)"}}/>
           Free for students aged 13–18
         </div>
 
         {/* Headline */}
-        <h1 style={{fontFamily:"var(--font-display)",fontSize:"clamp(36px,5.5vw,72px)",fontWeight:400,lineHeight:1.06,color:"var(--ink)",maxWidth:720,marginBottom:20,letterSpacing:"-0.025em"}}>
-          Go from curious<br/>to <em style={{fontStyle:"italic",color:"var(--gold)"}}>capable</em> in 6 months
+        <h1 style={{fontFamily:"var(--font-display)",fontSize:"clamp(36px,5.5vw,72px)",fontWeight:800,lineHeight:1.05,color:"var(--ink)",maxWidth:720,marginBottom:20,letterSpacing:"-0.03em",position:"relative",zIndex:1}}>
+          Go from curious<br/>to{" "}
+          <em style={{fontStyle:"italic",background:"linear-gradient(135deg, #6C8EFF, #8B5CF6, #6C8EFF)",backgroundSize:"200% auto",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text",animation:"gradient-x 3s ease infinite"}}>capable</em>
+          {" "}in 6 months
         </h1>
 
         {/* Subheadline */}
-        <p style={{fontSize:"clamp(15px,2vw,18px)",color:"var(--muted)",maxWidth:480,lineHeight:1.7,marginBottom:40}}>
-          Pick anything you want to learn. Velorn maps it out — daily lessons, weekly tests, and an AI tutor built around <em>you</em>.
+        <p style={{fontSize:"clamp(15px,2vw,18px)",color:"var(--muted)",maxWidth:480,lineHeight:1.7,marginBottom:40,position:"relative",zIndex:1}}>
+          Pick anything you want to learn. Velorn maps it out — daily lessons, weekly tests, and an AI tutor built around <em style={{color:"var(--ink2)"}}>you</em>.
         </p>
 
-        {/* Interactive input CTA */}
-        <div style={{width:"100%",maxWidth:520,marginBottom:16}}>
-          <div style={{display:"flex",alignItems:"center",gap:0,background:"var(--surface)",border:`1.5px solid ${focused?"var(--ink)":"var(--border)"}`,borderRadius:10,boxShadow:focused?"0 0 0 3px rgba(9,9,11,0.08)":"var(--shadow)",transition:"all 0.15s",overflow:"hidden"}}>
-            <input
-              value={typed}
-              onChange={e=>setTyped(e.target.value)}
-              onFocus={()=>setFocused(true)}
-              onBlur={()=>setFocused(false)}
+        {/* Input CTA */}
+        <div style={{width:"100%",maxWidth:520,marginBottom:16,position:"relative",zIndex:1}}>
+          <div style={{display:"flex",alignItems:"center",background:"var(--surface)",border:`1.5px solid ${focused?"var(--accent)":"var(--border)"}`,borderRadius:12,boxShadow:focused?"0 0 0 3px rgba(108,142,255,0.12), var(--shadow-md)":"var(--shadow)",transition:"all 0.2s",overflow:"hidden"}}>
+            <input value={typed} onChange={e=>setTyped(e.target.value)} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)}
               placeholder={`e.g. ${examples[exIdx]}`}
-              style={{flex:1,padding:"13px 18px",border:"none",outline:"none",fontSize:15,fontFamily:"var(--font)",background:"transparent",color:"var(--ink)"}}
-            />
-            <button
-              className="btn btn-primary"
-              style={{margin:5,borderRadius:7,padding:"10px 18px",flexShrink:0}}
-              onClick={onStart}
-            >
+              style={{flex:1,padding:"14px 18px",border:"none",outline:"none",fontSize:15,fontFamily:"var(--font)",background:"transparent",color:"var(--ink)"}}/>
+            <button className="btn btn-primary" style={{margin:5,borderRadius:8,padding:"10px 18px",flexShrink:0}} onClick={onStart}>
               Build My Roadmap
             </button>
           </div>
-          <p style={{fontSize:12,color:"var(--subtle)",marginTop:8,textAlign:"center"}}>
-            No credit card · Takes 30 seconds to set up
-          </p>
+          <p style={{fontSize:12,color:"var(--subtle)",marginTop:8,textAlign:"center"}}>No credit card · Takes 30 seconds to set up</p>
         </div>
 
-        {/* Secondary CTA */}
-        <button className="btn btn-ghost btn-sm row gap-6" onClick={onDemo} style={{color:"var(--muted)"}}>
+        <button className="btn btn-ghost btn-sm row gap-6" onClick={onDemo} style={{color:"var(--muted)",position:"relative",zIndex:1}}>
           <Icon.Eye/> See how it works first
         </button>
       </div>
 
-      {/* ── How It Works ── */}
+      {/* How It Works */}
       <div style={{width:"100%",maxWidth:860,padding:"0 24px 72px"}}>
         <div style={{borderTop:"1px solid var(--border)",paddingTop:56}}>
-          <p style={{fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--muted)",textAlign:"center",marginBottom:40}}>How Velorn Works</p>
+          <p style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.12em",color:"var(--muted)",textAlign:"center",marginBottom:40}}>How Velorn Works</p>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:32}}>
             {[
               {n:"01",title:"Tell us what you want to learn",desc:"Type any skill, topic, or goal. Chess, coding, design — anything goes."},
-              {n:"02",title:"Get your 6-month roadmap",desc:"AI generates a complete structured plan with daily tasks tailored to your level and time."},
-              {n:"03",title:"Learn every day with Professor Max",desc:"5 focused lectures daily, weekly tests, and a tutor available 24/7 to answer questions."},
+              {n:"02",title:"Get your 6-month roadmap",desc:"AI generates a complete structured plan with daily tasks tailored to your level."},
+              {n:"03",title:"Learn every day with Professor Max",desc:"5 focused lectures daily, weekly tests, and a tutor available 24/7."},
             ].map(s=>(
               <div key={s.n} style={{display:"flex",flexDirection:"column",gap:10}}>
-                <span style={{fontFamily:"var(--font-display)",fontSize:32,fontWeight:400,color:"var(--border)",letterSpacing:"-0.03em"}}>{s.n}</span>
+                <span style={{fontFamily:"var(--font-display)",fontSize:36,fontWeight:800,background:"linear-gradient(135deg, var(--border-strong), var(--surface3))",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text",letterSpacing:"-0.04em"}}>{s.n}</span>
                 <h3 style={{fontSize:15,fontWeight:600,color:"var(--ink)",lineHeight:1.4}}>{s.title}</h3>
                 <p style={{fontSize:14,color:"var(--muted)",lineHeight:1.6}}>{s.desc}</p>
               </div>
@@ -563,18 +484,17 @@ function Landing({ onStart, onDemo }) {
         </div>
       </div>
 
-      {/* ── Feature Grid ── */}
+      {/* Feature Grid */}
       <div style={{width:"100%",maxWidth:860,padding:"0 24px 80px"}}>
-        <p style={{fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--muted)",textAlign:"center",marginBottom:40}}>Everything you need to actually learn</p>
+        <p style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.12em",color:"var(--muted)",textAlign:"center",marginBottom:40}}>Everything you need to actually learn</p>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:12}}>
           {features.map(f=>(
-            <div
-              key={f.title}
-              style={{padding:"24px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,transition:"all 0.2s",cursor:"default"}}
-              onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--border-strong)";e.currentTarget.style.boxShadow="var(--shadow-md)";e.currentTarget.style.transform="translateY(-2px)";}}
-              onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.boxShadow="none";e.currentTarget.style.transform="translateY(0)";}}
+            <div key={f.title} className="card-3d"
+              style={{padding:"24px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,cursor:"default"}}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--border-strong)";}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";}}
             >
-              <div style={{width:36,height:36,borderRadius:8,background:"var(--surface2)",border:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--ink2)",marginBottom:14}}>{f.icon}</div>
+              <div style={{width:38,height:38,borderRadius:10,background:"var(--surface2)",border:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--accent)",marginBottom:14}}>{f.icon}</div>
               <h4 style={{fontSize:14,fontWeight:600,color:"var(--ink)",marginBottom:6,lineHeight:1.4}}>{f.title}</h4>
               <p style={{fontSize:13,color:"var(--muted)",lineHeight:1.55}}>{f.desc}</p>
             </div>
@@ -582,44 +502,38 @@ function Landing({ onStart, onDemo }) {
         </div>
       </div>
 
-      {/* ── Social Proof ── */}
-      <div style={{width:"100%",background:"var(--surface2)",borderTop:"1px solid var(--border)",borderBottom:"1px solid var(--border)",padding:"48px 24px"}}>
+      {/* Social Proof */}
+      <div style={{width:"100%",background:"var(--surface)",borderTop:"1px solid var(--border)",borderBottom:"1px solid var(--border)",padding:"48px 24px"}}>
         <div style={{maxWidth:860,margin:"0 auto"}}>
-          <p style={{fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--muted)",textAlign:"center",marginBottom:32}}>What students say</p>
+          <p style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.12em",color:"var(--muted)",textAlign:"center",marginBottom:32}}>What students say</p>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:16}}>
             {[
               {q:"I've tried 10 other apps. Velorn is the only one where I actually knew what to do next every single day.",name:"Riya, 16",subject:"Learning Web Dev"},
               {q:"Professor Max explained recursion better in 2 minutes than my teacher did in 2 weeks.",name:"Arjun, 17",subject:"Studying Programming"},
               {q:"I went from knowing nothing about chess to beating my dad in 3 months. The roadmap actually works.",name:"Sana, 15",subject:"Learning Chess"},
             ].map(t=>(
-              <div key={t.name} style={{padding:"20px 22px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10}}>
+              <div key={t.name} style={{padding:"20px 22px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:12}}>
                 <p style={{fontSize:14,color:"var(--ink2)",lineHeight:1.65,marginBottom:14}}>"{t.q}"</p>
-                <div>
-                  <p style={{fontSize:13,fontWeight:600,color:"var(--ink)"}}>{t.name}</p>
-                  <p style={{fontSize:12,color:"var(--muted)"}}>{t.subject}</p>
-                </div>
+                <p style={{fontSize:13,fontWeight:600,color:"var(--ink)"}}>{t.name}</p>
+                <p style={{fontSize:12,color:"var(--muted)"}}>{t.subject}</p>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* ── Final CTA ── */}
+      {/* Final CTA */}
       <div style={{padding:"72px 24px",textAlign:"center"}}>
-        <h2 style={{fontFamily:"var(--font-display)",fontSize:"clamp(26px,4vw,44px)",fontWeight:400,marginBottom:16,letterSpacing:"-0.02em"}}>
-          Ready to start learning?
-        </h2>
+        <h2 style={{fontFamily:"var(--font-display)",fontSize:"clamp(26px,4vw,44px)",fontWeight:800,marginBottom:16,letterSpacing:"-0.03em"}}>Ready to start learning?</h2>
         <p style={{fontSize:15,color:"var(--muted)",marginBottom:28}}>Join thousands of students building real skills, one day at a time.</p>
-        <button className="btn btn-primary btn-lg row gap-8" style={{margin:"0 auto"}} onClick={onStart}>
-          Build My Roadmap <Icon.ArrowRight/>
-        </button>
+        <button className="btn btn-primary btn-lg row gap-8" style={{margin:"0 auto"}} onClick={onStart}>Build My Roadmap <Icon.ArrowRight/></button>
         <p style={{fontSize:12,color:"var(--subtle)",marginTop:12}}>Free · No credit card · Starts in 30 seconds</p>
       </div>
     </div>
   );
 }
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
+// ── Auth ───────────────────────────────────────────────────────────────────
 function Auth({ onAuth }) {
   const [mode,setMode]=useState("signup");
   const [form,setForm]=useState({name:"",age:"",grade:"",email:"",password:""});
@@ -645,7 +559,7 @@ function Auth({ onAuth }) {
     <div className="page container" style={{paddingTop:64,paddingBottom:64}}>
       <div className="card card-p-lg" style={{maxWidth:420,margin:"0 auto"}}>
         <div style={{marginBottom:24}}>
-          <h2 style={{fontSize:22,fontWeight:600,marginBottom:4}}>{mode==="signup"?"Create your account":"Welcome back"}</h2>
+          <h2 style={{fontSize:22,fontWeight:700,marginBottom:4}}>{mode==="signup"?"Create your account":"Welcome back"}</h2>
           <p style={{fontSize:14,color:"var(--muted)"}}>{mode==="signup"?"Start your learning journey":"Continue your roadmap"}</p>
         </div>
         <button className="btn-google" onClick={handleGoogle} disabled={loading}>
@@ -653,7 +567,7 @@ function Auth({ onAuth }) {
           Continue with Google
         </button>
         <div className="divider" style={{margin:"16px 0"}}>or</div>
-        {err&&<div className="badge badge-red" style={{marginBottom:12,borderRadius:6,padding:"8px 12px",fontSize:13,display:"flex",alignItems:"center",gap:6}}><Icon.AlertCircle/>{err}</div>}
+        {err&&<div className="badge badge-red" style={{marginBottom:12,borderRadius:8,padding:"8px 12px",fontSize:13,display:"flex",alignItems:"center",gap:6,width:"100%"}}><Icon.AlertCircle/>{err}</div>}
         <div className="stack gap-12">
           {mode==="signup"&&<>
             <div className="field"><label className="label">Full Name</label><input className="input" placeholder="Your name" value={form.name} onChange={e=>set("name",e.target.value)}/></div>
@@ -669,7 +583,7 @@ function Auth({ onAuth }) {
           </button>
           <p style={{textAlign:"center",fontSize:13,color:"var(--muted)"}}>
             {mode==="signup"?"Already have an account? ":"New here? "}
-            <span style={{color:"var(--ink)",cursor:"pointer",fontWeight:500,textDecoration:"underline"}} onClick={()=>{setMode(m=>m==="signup"?"login":"signup");setErr("");}}>
+            <span style={{color:"var(--accent)",cursor:"pointer",fontWeight:500}} onClick={()=>{setMode(m=>m==="signup"?"login":"signup");setErr("");}}>
               {mode==="signup"?"Sign in":"Create account"}
             </span>
           </p>
@@ -679,16 +593,16 @@ function Auth({ onAuth }) {
   );
 }
 
-// ── Roadmap Loader ────────────────────────────────────────────────────────────
+// ── Roadmap Loader ─────────────────────────────────────────────────────────
 const LOADING_STEPS=["Analyzing your learning goals","Mapping out 6 months of content","Scheduling daily lessons","Preparing weekly assessments","Finalizing your roadmap"];
 function RoadmapLoader() {
   const [step,setStep]=useState(0);const [pct,setPct]=useState(0);
   useEffect(()=>{const si=setInterval(()=>setStep(s=>s<LOADING_STEPS.length-1?s+1:s),3500);const pi=setInterval(()=>setPct(p=>p<95?p+1:p),220);return()=>{clearInterval(si);clearInterval(pi);};},[]);
   return (
-    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:40}}>
+    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:40,background:"var(--bg)"}}>
       <div style={{width:440,textAlign:"center"}}>
-        <div style={{width:48,height:48,border:"2px solid var(--border)",borderTop:"2px solid var(--ink)",borderRadius:"50%",animation:"spin 0.8s linear infinite",margin:"0 auto 32px"}}/>
-        <h2 style={{fontSize:20,fontWeight:600,marginBottom:8}}>Building Your Roadmap</h2>
+        <div style={{width:52,height:52,border:"2px solid var(--border)",borderTop:"2px solid var(--accent)",borderRadius:"50%",animation:"spin 0.8s linear infinite",margin:"0 auto 32px",boxShadow:"0 0 20px rgba(108,142,255,0.2)"}}/>
+        <h2 style={{fontSize:20,fontWeight:700,marginBottom:8}}>Building Your Roadmap</h2>
         <p style={{fontSize:14,color:"var(--muted)",marginBottom:32,minHeight:20}}>{LOADING_STEPS[step]}</p>
         <div className="progress-track" style={{height:4,marginBottom:12}}>
           <div className="progress-fill" style={{width:`${pct}%`}}/>
@@ -699,7 +613,7 @@ function RoadmapLoader() {
   );
 }
 
-// ── Onboarding ────────────────────────────────────────────────────────────────
+// ── Onboarding ─────────────────────────────────────────────────────────────
 function Onboarding({ user, profile, onDone }) {
   const [form,setForm]=useState({career:"",level:"Beginner",time:"1 hour",goal:"Strong foundation"});
   const [loading,setLoading]=useState(false);
@@ -736,7 +650,7 @@ Generate ALL 6 months ALL 4 weeks. Every task specific to "${form.career}".`;
       <div className="card card-p-lg" style={{maxWidth:520,margin:"0 auto"}}>
         <div style={{marginBottom:28}}>
           <p style={{fontSize:13,color:"var(--muted)",marginBottom:4}}>Welcome, {name}</p>
-          <h2 style={{fontSize:22,fontWeight:600,marginBottom:6}}>Set up your learning path</h2>
+          <h2 style={{fontSize:22,fontWeight:700,marginBottom:6}}>Set up your learning path</h2>
           <p style={{fontSize:14,color:"var(--muted)"}}>Tell us what you want to learn and we'll build a personalized 6-month roadmap.</p>
         </div>
         <div className="stack gap-16">
@@ -746,7 +660,7 @@ Generate ALL 6 months ALL 4 weeks. Every task specific to "${form.career}".`;
             <div className="field" style={{flex:1}}><label className="label">Daily Time</label><select className="input" value={form.time} onChange={e=>set("time",e.target.value)}><option>1 hour</option><option>2 hours</option><option>3+ hours</option></select></div>
           </div>
           <div className="field"><label className="label">Primary Goal</label><select className="input" value={form.goal} onChange={e=>set("goal",e.target.value)}><option>Strong foundation</option><option>Job ready</option><option>Build projects</option></select></div>
-          <button className="btn btn-primary row gap-8" style={{justifyContent:"center",padding:"12px 20px",fontSize:15}} onClick={generate}>
+          <button className="btn btn-primary row gap-8" style={{justifyContent:"center",padding:"13px 20px",fontSize:15}} onClick={generate}>
             Generate My Roadmap <Icon.ArrowRight/>
           </button>
         </div>
@@ -755,7 +669,7 @@ Generate ALL 6 months ALL 4 weeks. Every task specific to "${form.career}".`;
   );
 }
 
-// ── Dashboard ─────────────────────────────────────────────────────────────────
+// ── Dashboard ──────────────────────────────────────────────────────────────
 function Dashboard({ user, roadmap, progress, onUpdateProgress, onNav, isDemo }) {
   const{currentMonth=1,currentWeek=1,currentDay=1,streak=0,completedDays=[]}=progress;
   const totalDays=180;const pct=Math.min(100,Math.round((completedDays.length/totalDays)*100));
@@ -772,8 +686,8 @@ function Dashboard({ user, roadmap, progress, onUpdateProgress, onNav, isDemo })
   return (
     <div className="page container" style={{paddingTop:40,paddingBottom:64}}>
       <div style={{marginBottom:32}}>
-        <p style={{fontSize:13,color:"var(--muted)",marginBottom:4}}>{roadmap.title}</p>
-        <h2 style={{fontSize:24,fontWeight:600}}>Dashboard</h2>
+        <p style={{fontSize:12,color:"var(--muted)",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:600}}>{roadmap.title}</p>
+        <h2 style={{fontSize:26,fontWeight:800}}>Dashboard</h2>
       </div>
 
       {/* Stats */}
@@ -784,7 +698,7 @@ function Dashboard({ user, roadmap, progress, onUpdateProgress, onNav, isDemo })
           {label:"Day Streak",value:`${streak}`,sub:"days"},
           {label:"Completed",value:`${pct}%`,sub:`${completedDays.length} / ${totalDays} days`},
         ].map(s=>(
-          <div key={s.label} className="card stat-card">
+          <div key={s.label} className="card card-3d stat-card">
             <div className="stat-label">{s.label}</div>
             <div className="stat-value">{s.value}</div>
             <div className="stat-sub">{s.sub}</div>
@@ -795,7 +709,7 @@ function Dashboard({ user, roadmap, progress, onUpdateProgress, onNav, isDemo })
       {/* Progress bar */}
       <div className="card card-p" style={{marginBottom:16}}>
         <div className="row gap-8" style={{justifyContent:"space-between",marginBottom:10}}>
-          <span style={{fontSize:14,fontWeight:500}}>Overall Progress</span>
+          <span style={{fontSize:14,fontWeight:600}}>Overall Progress</span>
           <span style={{fontSize:13,color:"var(--muted)"}}>{completedDays.length} / {totalDays} days</span>
         </div>
         <div className="progress-track" style={{height:6}}>
@@ -804,7 +718,7 @@ function Dashboard({ user, roadmap, progress, onUpdateProgress, onNav, isDemo })
       </div>
 
       {/* Today's task */}
-      <div className="card card-p" style={{marginBottom:16,borderLeft:"3px solid var(--ink)"}}>
+      <div className="card card-p" style={{marginBottom:16,borderLeft:"2px solid var(--accent)"}}>
         <div className="row gap-8" style={{marginBottom:12}}>
           <span className="badge badge-neutral">Day {currentDay} — Today's Task</span>
         </div>
@@ -818,7 +732,7 @@ function Dashboard({ user, roadmap, progress, onUpdateProgress, onNav, isDemo })
       {/* Week goal */}
       {week&&(
         <div className="card card-p">
-          <p style={{fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",color:"var(--muted)",marginBottom:8}}>Week {currentWeek} Goal</p>
+          <p style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--muted)",marginBottom:8}}>Week {currentWeek} Goal</p>
           <p style={{fontSize:15,color:"var(--ink2)",lineHeight:1.6,marginBottom:16}}>{week.goal}</p>
           <div className="row gap-10">
             <span className="badge badge-neutral">{week.testTopic}</span>
@@ -830,7 +744,7 @@ function Dashboard({ user, roadmap, progress, onUpdateProgress, onNav, isDemo })
   );
 }
 
-// ── Learn ─────────────────────────────────────────────────────────────────────
+// ── Learn ──────────────────────────────────────────────────────────────────
 const PROFESSOR_SYSTEM=`You are Professor Max — a clear, direct, knowledgeable mentor for teenagers. Write concisely. Use short paragraphs. Speak directly to "you". Never write like a textbook.`;
 
 function Learn({ progress, roadmap, onUpdateProgress, user, isDemo, onSignUp }) {
@@ -845,80 +759,33 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo, onSignUp }) 
   useEffect(()=>{setLectures(null);setActive(0);setAnswer("");setDayDone(false);setShowTask(false);setTaskSteps({});setTaskSubmitted(false);setTaskFeedback("");loadLectures();},[currentMonth,currentWeek,currentDay]);
 
   const loadLectures = async () => {
-  setLoading(true);
-
-  const cacheKey = `m${currentMonth}w${currentWeek}d${currentDay}`;
-  console.log("🔍 Checking cache for key:", cacheKey);
-  console.log("🔍 user?.id:", user?.id, "isDemo:", isDemo);
-
-  if (!isDemo && user?.id) {
-    const cached = await getCachedLectures(user.id, cacheKey);
-    console.log("📦 Cache result:", cached);
-    
-    if (cached && cached.length >= 3) {
-      console.log("✅ Cache HIT - loading instantly!");
-      setLectures(cached);
-      setLoading(false);
-      return;
-    } else {
-      console.log("❌ Cache MISS - calling Groq...");
+    setLoading(true);
+    const cacheKey = `m${currentMonth}w${currentWeek}d${currentDay}`;
+    if (!isDemo && user?.id) {
+      const cached = await getCachedLectures(user.id, cacheKey);
+      if (cached && cached.length >= 3) { setLectures(cached); setLoading(false); return; }
     }
-  } else {
-    console.log("⚠️ Skipping cache - isDemo or no user");
-  }
-  
-
-  // Generate via Groq
-  const prompt = `You are a world-class mentor teaching a 14-year-old beginner.
-
+    const prompt = `You are a world-class mentor teaching a 14-year-old beginner.
 Week topic: "${weekTopic}"
 Subject: "${roadmap.title}"
 Today is Day ${currentDay} of 7 this week.
-
 Each day covers different sub-topics. Day 1 = basics, Day 2 = deeper, Day 3 = application, Day 4 = advanced, Day 5 = mastery.
-For Day ${currentDay}, cover sub-topics ${(currentDay - 1) * 5 + 1} to ${currentDay * 5} of "${weekTopic}". Do NOT repeat previous days.
-
+For Day ${currentDay}, cover sub-topics ${(currentDay-1)*5+1} to ${currentDay*5} of "${weekTopic}". Do NOT repeat previous days.
 Generate EXACTLY 5 lectures. Return ONLY valid JSON. No markdown, no backticks.
 {"lectures":[{"num":1,"title":"Clear concise title","coreIdea":"2-3 sentences explaining the concept simply","example":"Real-world example specific to ${roadmap.title}","action":"One concrete task the student can do today","mistake":"One common beginner mistake","takeaway":"One memorable sentence"},{"num":2,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":3,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":4,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":5,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"...","homework":["Task 1","Task 2"]}]}`;
-
-  let raw = "";
-  try {
-    raw = await askClaude([{ role: "user", content: prompt }]);
-  } catch (e) { raw = ""; }
-
-  if (raw?.trim()) {
-    try {
-      let c = raw.trim().replace(/```json|```/gi, "").replace(/,(\s*[}\]])/g, "$1");
-      const m = c.match(/\{[\s\S]*\}/);
-      if (m) {
-        const p = JSON.parse(m[0]);
-        const a = p.lectures && Array.isArray(p.lectures) ? p.lectures : [];
-        if (a.length >= 3) {
-          setLectures(a);
-          // Save to cache
-          if (!isDemo && user?.id) {
-            await saveCachedLectures(user.id, cacheKey, a);
-          }
-          setLoading(false);
-          return;
-        }
-      }
-    } catch (e) { console.warn("Parse failed:", e.message); }
-  }
-
-  // Fallback
-  setLectures(Array.from({ length: 5 }, (_, i) => ({
-    num: i + 1,
-    title: `${weekTopic} — Part ${i + 1}`,
-    coreIdea: `This section covers a key aspect of ${weekTopic} within ${roadmap.title}.`,
-    example: `In ${roadmap.title}, this concept appears when working on real projects.`,
-    action: `Spend 10 minutes applying this to something concrete today.`,
-    mistake: `Beginners often skip this step — don't.`,
-    takeaway: `Mastering this gives you a real edge in ${roadmap.title}.`,
-    homework: i === 4 ? [`Find an example of ${weekTopic} in the real world`, `Apply today's concepts to a small exercise`] : null
-  })));
-  setLoading(false);
-};
+    let raw="";
+    try { raw=await askClaude([{role:"user",content:prompt}]); } catch(e) { raw=""; }
+    if(raw?.trim()){
+      try {
+        let c=raw.trim().replace(/```json|```/gi,"").replace(/,(\s*[}\]])/g,"$1");
+        const m=c.match(/\{[\s\S]*\}/);
+        if(m){const p=JSON.parse(m[0]);const a=p.lectures&&Array.isArray(p.lectures)?p.lectures:[];
+          if(a.length>=3){setLectures(a);if(!isDemo&&user?.id)await saveCachedLectures(user.id,cacheKey,a);setLoading(false);return;}}
+      } catch(e){console.warn("Parse failed:",e.message);}
+    }
+    setLectures(Array.from({length:5},(_,i)=>({num:i+1,title:`${weekTopic} — Part ${i+1}`,coreIdea:`This section covers a key aspect of ${weekTopic} within ${roadmap.title}.`,example:`In ${roadmap.title}, this concept appears when working on real projects.`,action:`Spend 10 minutes applying this to something concrete today.`,mistake:`Beginners often skip this step — don't.`,takeaway:`Mastering this gives you a real edge in ${roadmap.title}.`,homework:i===4?[`Find an example of ${weekTopic} in the real world`,`Apply today's concepts to a small exercise`]:null})));
+    setLoading(false);
+  };
 
   const submitDoubt=async()=>{if(!doubt.trim()||loadingDoubt)return;setLoadingDoubt(true);setAnswer("");try{const res=await askClaude([{role:"user",content:`${PROFESSOR_SYSTEM}\n\nStudent is learning "${roadmap.title}", this week: "${weekTopic}". Question: "${doubt}"\n\nAnswer clearly and specifically. Under 150 words.`}]);setAnswer(res||"No response. Please try again.");}catch{setAnswer("Something went wrong.");}setLoadingDoubt(false);};
   const markDone=()=>{setDayDone(true);if(onUpdateProgress)onUpdateProgress({type:"complete_day"});};
@@ -938,7 +805,7 @@ Generate EXACTLY 5 lectures. Return ONLY valid JSON. No markdown, no backticks.
     let fb="Good work completing the task. Your submission shows clear thinking.";
     try{const res=await askClaude([{role:"user",content:`Student learning "${roadmap.title}" submitted work on "${weekTopic}":\n\n${submission}\n\nGive honest, specific feedback: strengths, what to improve, 2-3 concrete suggestions. Around 200 words.`}]);if(res&&res.trim().length>20)fb=res;}catch{}
     setTaskFeedback(fb);setTaskSubmitted(true);setLoadingFeedback(false);
-    try{await saveTaskSubmission(user.id,{weekKey:`m${currentMonth}w${currentWeek}d${currentDay}`,career:roadmap.title,taskTitle:task.title,answers:taskSteps,feedback:fb});}catch{}
+    try{await saveTaskSubmission(user.id,{weekKey:`m${currentMonth}w${currentWeek}d${currentDay}`,career:roadmap.title,taskTitle:getWeeklyTask().title,answers:taskSteps,feedback:fb});}catch{}
   };
 
   const submitTaskDoubt=async()=>{
@@ -951,7 +818,7 @@ Generate EXACTLY 5 lectures. Return ONLY valid JSON. No markdown, no backticks.
 
   if(loading)return(
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"60vh",flexDirection:"column",gap:16}}>
-      <div style={{width:36,height:36,border:"2px solid var(--border)",borderTop:"2px solid var(--ink)",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+      <div style={{width:40,height:40,border:"2px solid var(--border)",borderTop:"2px solid var(--accent)",borderRadius:"50%",animation:"spin 0.8s linear infinite",boxShadow:"0 0 20px rgba(108,142,255,0.2)"}}/>
       <p style={{fontSize:14,color:"var(--muted)"}}>Preparing Day {currentDay} lectures…</p>
     </div>
   );
@@ -959,14 +826,14 @@ Generate EXACTLY 5 lectures. Return ONLY valid JSON. No markdown, no backticks.
   return (
     <div className="page container" style={{paddingTop:32,paddingBottom:64}}>
       {/* Header */}
-      <div className="card card-p" style={{marginBottom:24,borderLeft:"3px solid var(--ink)"}}>
+      <div className="card card-p" style={{marginBottom:24,borderLeft:"2px solid var(--accent)"}}>
         <div className="row gap-8" style={{flexWrap:"wrap",marginBottom:6}}>
           <span className="badge badge-neutral">Month {currentMonth}</span>
           <span className="badge badge-neutral">Week {currentWeek}</span>
           <span className="badge badge-neutral">Day {currentDay}</span>
           <span className="badge badge-gold">Professor Max</span>
         </div>
-        <h2 style={{fontSize:18,fontWeight:600,marginBottom:2}}>{weekTopic}</h2>
+        <h2 style={{fontSize:18,fontWeight:700,marginBottom:2}}>{weekTopic}</h2>
         <p style={{fontSize:13,color:"var(--muted)"}}>5 lectures · read at your own pace</p>
       </div>
 
@@ -975,7 +842,7 @@ Generate EXACTLY 5 lectures. Return ONLY valid JSON. No markdown, no backticks.
           {/* Sidebar */}
           <div style={{width:240,flexShrink:0}}>
             <div className="card card-p" style={{padding:12}}>
-              <p style={{fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--muted)",marginBottom:10}}>Day {currentDay} — 5 Lectures</p>
+              <p style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--muted)",marginBottom:10}}>Day {currentDay} — 5 Lectures</p>
               <div className="stack gap-2">
                 {lectures.map((l,i)=>(
                   <button key={i} className={`lec-list-item ${i===active?"active":""}`} onClick={()=>setActive(i)}>
@@ -987,94 +854,41 @@ Generate EXACTLY 5 lectures. Return ONLY valid JSON. No markdown, no backticks.
             </div>
           </div>
 
-          {/* Main content */}
+          {/* Main */}
           <div style={{flex:1,minWidth:280}}>
             <div className="card card-p-lg" style={{marginBottom:16}}>
-              {/* Lecture header */}
               <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24,paddingBottom:20,borderBottom:"1px solid var(--border)"}}>
-                <div style={{width:36,height:36,borderRadius:6,background:"var(--surface2)",border:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:"var(--ink2)",flexShrink:0}}>{active+1}</div>
-                <h2 style={{fontSize:18,fontWeight:600,lineHeight:1.3}}>{lectures[active].title}</h2>
+                <div style={{width:36,height:36,borderRadius:8,background:"linear-gradient(135deg, var(--accent), var(--accent2))",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:"#fff",flexShrink:0,boxShadow:"0 0 14px rgba(108,142,255,0.3)"}}>{active+1}</div>
+                <h2 style={{fontSize:18,fontWeight:700,lineHeight:1.3}}>{lectures[active].title}</h2>
               </div>
 
-              {/* Content blocks */}
               <div style={{marginBottom:20}}>
                 {lectures[active].body && <p style={{fontSize:15,lineHeight:1.75,color:"var(--ink2)",marginBottom:16,whiteSpace:"pre-wrap"}}>{lectures[active].body}</p>}
-                {lectures[active].coreIdea && (
-                  <div className="lec-block">
-                    <div className="lec-block-label lec-block-label-blue">Core Concept</div>
-                    <p className="lec-text">{lectures[active].coreIdea}</p>
-                  </div>
-                )}
-                {lectures[active].example && (
-                  <div className="lec-block lec-block-blue">
-                    <div className="lec-block-label lec-block-label-blue">Real-World Example</div>
-                    <p className="lec-text">{lectures[active].example}</p>
-                  </div>
-                )}
-                {lectures[active].action && (
-                  <div className="lec-block lec-block-green">
-                    <div className="lec-block-label lec-block-label-green">Action Item</div>
-                    <p className="lec-text">{lectures[active].action}</p>
-                  </div>
-                )}
-                {lectures[active].mistake && (
-                  <div className="lec-block lec-block-red">
-                    <div className="lec-block-label lec-block-label-red">Common Mistake</div>
-                    <p className="lec-text">{lectures[active].mistake}</p>
-                  </div>
-                )}
+                {lectures[active].coreIdea && (<div className="lec-block"><div className="lec-block-label lec-block-label-blue">Core Concept</div><p className="lec-text">{lectures[active].coreIdea}</p></div>)}
+                {lectures[active].example && (<div className="lec-block lec-block-blue"><div className="lec-block-label lec-block-label-blue">Real-World Example</div><p className="lec-text">{lectures[active].example}</p></div>)}
+                {lectures[active].action && (<div className="lec-block lec-block-green"><div className="lec-block-label lec-block-label-green">Action Item</div><p className="lec-text">{lectures[active].action}</p></div>)}
+                {lectures[active].mistake && (<div className="lec-block lec-block-red"><div className="lec-block-label lec-block-label-red">Common Mistake</div><p className="lec-text">{lectures[active].mistake}</p></div>)}
               </div>
 
-              {/* Key takeaway */}
               {getTakeaway(lectures[active]) && (
-  <div 
-    style={{
-      background: "var(--gold-light)",
-      border: "1px solid #FDE68A",
-      borderRadius: "var(--r)",        // ← Fixed: added quotes
-      padding: "14px 18px",
-      marginBottom: 20
-    }}
-  >
-    <p 
-      style={{
-        fontSize: 11,
-        fontWeight: 600,
-        textTransform: "uppercase",
-        letterSpacing: "0.08em",
-        color: "var(--gold)",
-        marginBottom: 6
-      }}
-    >
-      Key Takeaway
-    </p>
-    <p 
-      style={{
-        fontSize: 15,
-        fontWeight: 500,
-        color: "var(--ink)",
-        lineHeight: 1.5
-      }}
-    >
-      {getTakeaway(lectures[active])}
-    </p>
-  </div>
-)}
+                <div style={{background:"var(--gold-light)",border:"1px solid var(--gold-border)",borderRadius:"var(--r)",padding:"14px 18px",marginBottom:20}}>
+                  <p style={{fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--gold)",marginBottom:6}}>Key Takeaway</p>
+                  <p style={{fontSize:15,fontWeight:500,color:"var(--ink)",lineHeight:1.5}}>{getTakeaway(lectures[active])}</p>
+                </div>
+              )}
 
-              {/* Homework */}
               {lectures[active].homework && (
                 <div style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:8,padding:"16px 20px",marginBottom:20}}>
-                  <p style={{fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--muted)",marginBottom:12}}>Homework</p>
+                  <p style={{fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--muted)",marginBottom:12}}>Homework</p>
                   {lectures[active].homework.map((t,i)=>(
                     <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:i<lectures[active].homework.length-1?10:0}}>
-                      <div style={{width:22,height:22,borderRadius:4,border:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:600,color:"var(--muted)",flexShrink:0,background:"var(--surface)"}}>{i+1}</div>
+                      <div style={{width:22,height:22,borderRadius:4,background:"linear-gradient(135deg,var(--accent),var(--accent2))",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#fff",flexShrink:0}}>{i+1}</div>
                       <p style={{fontSize:14,lineHeight:1.6,color:"var(--ink2)"}}>{t}</p>
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Navigation */}
               <div style={{display:"flex",gap:8,justifyContent:"space-between"}}>
                 <button className="btn btn-secondary row gap-6" onClick={()=>setActive(a=>Math.max(0,a-1))} disabled={active===0}><Icon.ChevronLeft/> Previous</button>
                 {active<lectures.length-1?(
@@ -1087,7 +901,6 @@ Generate EXACTLY 5 lectures. Return ONLY valid JSON. No markdown, no backticks.
               </div>
             </div>
 
-            {/* Progress */}
             <div style={{marginBottom:24}}>
               <div className="row gap-8" style={{justifyContent:"space-between",marginBottom:6,fontSize:13,color:"var(--muted)"}}>
                 <span>Progress</span><span>{active+1} / {lectures.length}</span>
@@ -1097,22 +910,14 @@ Generate EXACTLY 5 lectures. Return ONLY valid JSON. No markdown, no backticks.
               </div>
             </div>
 
-            {/* Ask Professor */}
             <div className="card card-p">
-              <div className="row gap-8" style={{marginBottom:4}}>
-                <Icon.MessageCircle/><h3 style={{fontSize:15,fontWeight:600}}>Ask Professor Max</h3>
-              </div>
+              <div className="row gap-8" style={{marginBottom:4}}><Icon.MessageCircle/><h3 style={{fontSize:15,fontWeight:700}}>Ask Professor Max</h3></div>
               <p style={{fontSize:13,color:"var(--muted)",marginBottom:14}}>Ask anything about today's topic — get a direct, clear answer.</p>
               <textarea className="input" placeholder={`e.g. I don't understand how ${weekTopic} applies in practice...`} value={doubt} onChange={e=>setDoubt(e.target.value)} style={{width:"100%",marginBottom:10}}/>
               <button className="btn btn-primary btn-sm row gap-6" onClick={submitDoubt} disabled={loadingDoubt||!doubt.trim()}>
                 {loadingDoubt?<><Icon.Loader/>Thinking…</>:<><Icon.Send/>Ask</>}
               </button>
-              {answer && (
-                <div className="answer-box">
-                  <p style={{fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--muted)",marginBottom:8}}>Professor Max</p>
-                  {answer}
-                </div>
-              )}
+              {answer && (<div className="answer-box"><p style={{fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--accent)",marginBottom:8}}>Professor Max</p>{answer}</div>)}
             </div>
           </div>
         </div>
@@ -1122,30 +927,28 @@ Generate EXACTLY 5 lectures. Return ONLY valid JSON. No markdown, no backticks.
       {showTask && lectures && (()=>{
         const task=getWeeklyTask();
         const allDone=task.steps.every(s=>taskSteps[s.id]?.trim().length>10);
-        const colors=["#18181B","#2563EB","#059669","#B45309","#DC2626"];
+        const colors=["var(--accent)","#8B5CF6","var(--emerald)","var(--gold)","var(--ember)"];
         return (
           <div style={{marginTop:32}}>
-            <div className="card card-p" style={{marginBottom:20,borderLeft:"3px solid var(--gold-border)"}}>
+            <div className="card card-p" style={{marginBottom:20,borderLeft:"2px solid var(--gold)"}}>
               <div className="row gap-8" style={{marginBottom:8}}>
                 <span className="badge badge-gold">Daily Task</span>
                 <span className="badge badge-neutral">Apply today's 5 lectures</span>
               </div>
-              <h2 style={{fontSize:18,fontWeight:600,marginBottom:4}}>{task.title}</h2>
+              <h2 style={{fontSize:18,fontWeight:700,marginBottom:4}}>{task.title}</h2>
               <p style={{fontSize:14,color:"var(--muted)",lineHeight:1.5}}>{task.description}</p>
             </div>
             {!taskSubmitted?(
               <div className="stack gap-16">
                 {task.steps.map((step,si)=>(
-                  <div key={step.id} className="card card-p" style={{borderLeft:`3px solid ${colors[si]}`}}>
+                  <div key={step.id} className="card card-p" style={{borderLeft:`2px solid ${colors[si]}`}}>
                     <div className="row gap-10" style={{marginBottom:10}}>
-                      <div style={{width:28,height:28,borderRadius:6,background:colors[si],color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:13,flexShrink:0}}>{si+1}</div>
+                      <div style={{width:28,height:28,borderRadius:8,background:colors[si],color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:13,flexShrink:0}}>{si+1}</div>
                       <h3 style={{fontSize:15,fontWeight:600}}>{step.label}</h3>
                     </div>
                     <p style={{fontSize:13,color:"var(--muted)",marginBottom:12,lineHeight:1.6}}>{step.prompt}</p>
                     <textarea className="input" value={taskSteps[step.id]||""} onChange={e=>setTaskSteps(p=>({...p,[step.id]:e.target.value}))} placeholder={step.placeholder} style={{width:"100%"}}/>
-                    {taskSteps[step.id]?.trim().length>10 && (
-                      <div className="row gap-4" style={{marginTop:6}}><Icon.Check style={{color:"var(--emerald)"}}/><span style={{fontSize:12,color:"var(--emerald)",fontWeight:500}}>Looks good</span></div>
-                    )}
+                    {taskSteps[step.id]?.trim().length>10 && (<div className="row gap-4" style={{marginTop:6}}><Icon.Check style={{color:"var(--emerald)"}}/><span style={{fontSize:12,color:"var(--emerald)",fontWeight:500}}>Looks good</span></div>)}
                   </div>
                 ))}
                 <div className="card card-p">
@@ -1157,38 +960,22 @@ Generate EXACTLY 5 lectures. Return ONLY valid JSON. No markdown, no backticks.
                   </button>
                   {taskDoubtAnswer && <div className="answer-box">{taskDoubtAnswer}</div>}
                 </div>
-                <button 
-  className="btn row gap-8" 
-  style={{
-    justifyContent: "center",
-    padding: "13px 20px",
-    fontSize: "15px",
-    background: allDone ? "var(--ink)" : "var(--surface2)",
-    color: allDone ? "#fff" : "var(--muted)",
-    border: `1px solid ${allDone ? "var(--ink)" : "var(--border)"}`,
-    borderRadius: "var(--r)",
-    cursor: allDone ? "pointer" : "not-allowed"
-  }} 
-  onClick={submitTask} 
-  disabled={loadingFeedback || !allDone}
->
-  {loadingFeedback ? (
-    <><Icon.Loader /> Reviewing…</>
-  ) : "Submit for Feedback"}
-</button>
+                <button className="btn row gap-8" style={{justifyContent:"center",padding:"13px 20px",fontSize:"15px",background:allDone?"linear-gradient(135deg, var(--accent), var(--accent2))":"var(--surface2)",color:allDone?"#fff":"var(--muted)",border:`1px solid ${allDone?"transparent":"var(--border)"}`,borderRadius:"var(--r)",cursor:allDone?"pointer":"not-allowed",boxShadow:allDone?"0 4px 20px rgba(108,142,255,0.25)":"none"}} onClick={submitTask} disabled={loadingFeedback||!allDone}>
+                  {loadingFeedback?<><Icon.Loader/>Reviewing…</>:"Submit for Feedback"}
+                </button>
                 {!allDone && <p style={{textAlign:"center",fontSize:13,color:"var(--muted)"}}>Complete all {task.steps.length} fields to submit.</p>}
               </div>
             ):(
               <div className="card card-p">
                 <div style={{marginBottom:20}}>
                   <div className="row gap-8" style={{marginBottom:4}}><Icon.Award style={{color:"var(--gold)"}}/><span className="badge badge-gold">Task Complete</span></div>
-                  <h3 style={{fontSize:16,fontWeight:600,marginTop:12,marginBottom:4}}>Professor Max's Feedback</h3>
+                  <h3 style={{fontSize:16,fontWeight:700,marginTop:12,marginBottom:4}}>Professor Max's Feedback</h3>
                 </div>
                 <div className="answer-box" style={{marginTop:0,marginBottom:24}}>{taskFeedback}</div>
                 <div className="stack gap-12">
                   {task.steps.map((step,si)=>(
                     <div key={step.id} style={{paddingBottom:12,borderBottom:si<task.steps.length-1?"1px solid var(--border)":"none"}}>
-                      <p style={{fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",color:"var(--muted)",marginBottom:4}}>{step.label}</p>
+                      <p style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",color:"var(--muted)",marginBottom:4}}>{step.label}</p>
                       <p style={{fontSize:14,color:"var(--ink2)",lineHeight:1.6}}>{taskSteps[step.id]}</p>
                     </div>
                   ))}
@@ -1203,7 +990,7 @@ Generate EXACTLY 5 lectures. Return ONLY valid JSON. No markdown, no backticks.
   );
 }
 
-// ── Weekly Test ───────────────────────────────────────────────────────────────
+// ── Weekly Test ────────────────────────────────────────────────────────────
 function WeeklyTest({ progress, roadmap }) {
   const{currentWeek=1,currentMonth=1}=progress;
   const month=roadmap.months[currentMonth-1];const week=month?.weeks[currentWeek-1];const topic=week?.testTopic??week?.goal??"Core Concepts";
@@ -1231,20 +1018,20 @@ Return ONLY this JSON structure, nothing else:
 
   return (
     <div className="page container" style={{paddingTop:32,paddingBottom:64}}>
-      <div className="card card-p" style={{marginBottom:24,borderLeft:"3px solid var(--ink)"}}>
+      <div className="card card-p" style={{marginBottom:24,borderLeft:"2px solid var(--accent)"}}>
         <div className="row gap-8" style={{flexWrap:"wrap",marginBottom:6}}>
           <span className="badge badge-neutral">Month {currentMonth}</span>
           <span className="badge badge-neutral">Week {currentWeek}</span>
           <span className="badge badge-gold">25 Questions</span>
         </div>
-        <h2 style={{fontSize:18,fontWeight:600,marginBottom:2}}>Weekly Assessment</h2>
+        <h2 style={{fontSize:18,fontWeight:700,marginBottom:2}}>Weekly Assessment</h2>
         <p style={{fontSize:13,color:"var(--muted)"}}>{topic}</p>
       </div>
 
       {!questions&&!loading&&(
         <div style={{textAlign:"center",padding:"60px 20px"}}>
-          <div style={{width:56,height:56,borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px",color:"var(--ink2)"}}><Icon.CheckSquare/></div>
-          <h3 style={{fontSize:18,fontWeight:600,marginBottom:8}}>Ready to test your knowledge?</h3>
+          <div style={{width:64,height:64,borderRadius:16,background:"linear-gradient(135deg, var(--accent), var(--accent2))",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px",color:"#fff",boxShadow:"0 8px 30px rgba(108,142,255,0.3)"}}><Icon.CheckSquare/></div>
+          <h3 style={{fontSize:20,fontWeight:700,marginBottom:8}}>Ready to test your knowledge?</h3>
           <p style={{color:"var(--muted)",marginBottom:28,fontSize:14}}>25 questions on {topic}. No time limit.</p>
           <button className="btn btn-primary btn-lg row gap-8" style={{margin:"0 auto"}} onClick={loadTest}>Start Assessment <Icon.ArrowRight/></button>
         </div>
@@ -1252,33 +1039,30 @@ Return ONLY this JSON structure, nothing else:
 
       {loading&&(
         <div style={{textAlign:"center",padding:"80px 20px"}}>
-          <div style={{width:36,height:36,border:"2px solid var(--border)",borderTop:"2px solid var(--ink)",borderRadius:"50%",animation:"spin 0.8s linear infinite",margin:"0 auto 16px"}}/>
+          <div style={{width:40,height:40,border:"2px solid var(--border)",borderTop:"2px solid var(--accent)",borderRadius:"50%",animation:"spin 0.8s linear infinite",margin:"0 auto 16px",boxShadow:"0 0 20px rgba(108,142,255,0.2)"}}/>
           <p style={{fontSize:14,color:"var(--muted)"}}>Generating questions on {topic}…</p>
         </div>
       )}
 
       {questions&&!submitted&&(
         <div>
-          {/* Progress */}
           <div className="card card-p" style={{marginBottom:16}}>
             <div className="row gap-8" style={{justifyContent:"space-between",marginBottom:8,fontSize:13}}>
-              <span style={{fontWeight:500}}>Question {currentQ+1} of {questions.length}</span>
+              <span style={{fontWeight:600}}>Question {currentQ+1} of {questions.length}</span>
               <span style={{color:"var(--muted)"}}>{Object.keys(answers).length} answered</span>
             </div>
             <div className="progress-track" style={{height:4,marginBottom:12}}>
               <div className="progress-fill progress-fill-gold" style={{width:`${pct}%`}}/>
             </div>
-            {/* Question nav dots */}
             <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
               {questions.map((_,i)=>(
-                <button key={i} onClick={()=>setCurrentQ(i)} style={{width:28,height:28,borderRadius:6,border:`1px solid ${i===currentQ?"var(--ink)":answers[i]?"var(--emerald)":"var(--border)"}`,background:i===currentQ?"var(--ink)":answers[i]?"var(--emerald-light)":"transparent",color:i===currentQ?"#fff":answers[i]?"var(--emerald)":"var(--muted)",fontWeight:600,fontSize:11,cursor:"pointer",fontFamily:"var(--font)"}}>{i+1}</button>
+                <button key={i} onClick={()=>setCurrentQ(i)} style={{width:28,height:28,borderRadius:6,border:`1px solid ${i===currentQ?"var(--accent)":answers[i]?"var(--emerald)":"var(--border)"}`,background:i===currentQ?"var(--accent)":answers[i]?"var(--emerald-light)":"var(--surface2)",color:i===currentQ?"#fff":answers[i]?"var(--emerald)":"var(--muted)",fontWeight:600,fontSize:11,cursor:"pointer",fontFamily:"var(--font)",transition:"all 0.1s"}}>{i+1}</button>
               ))}
             </div>
           </div>
 
-          {/* Question card */}
           <div className="card card-p-lg" style={{marginBottom:16}}>
-            <p style={{fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--gold)",marginBottom:12}}>Question {currentQ+1}</p>
+            <p style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",color:"var(--gold)",marginBottom:12}}>Question {currentQ+1}</p>
             <p style={{fontSize:16,fontWeight:500,lineHeight:1.6,marginBottom:20,color:"var(--ink)"}}>{questions[currentQ].q}</p>
             <div className="stack gap-8">
               {questions[currentQ].options.map((opt,j)=>{const letter=["A","B","C","D"][j];const selected=answers[currentQ]===letter;return(
@@ -1287,7 +1071,6 @@ Return ONLY this JSON structure, nothing else:
             </div>
           </div>
 
-          {/* Nav buttons */}
           <div className="row gap-8">
             <button className="btn btn-secondary row gap-6" onClick={()=>setCurrentQ(q=>Math.max(0,q-1))} disabled={currentQ===0}><Icon.ChevronLeft/>Previous</button>
             {currentQ<questions.length-1?(
@@ -1304,19 +1087,16 @@ Return ONLY this JSON structure, nothing else:
 
       {submitted&&(
         <div>
-          {/* Score card */}
-          <div className="card card-p-lg" style={{textAlign:"center",marginBottom:24,background:scorePct>=80?"var(--emerald-light)":scorePct>=60?"var(--gold-light)":"var(--ember-light)",border:`1px solid ${scorePct>=80?"#BBF7D0":scorePct>=60?"#FDE68A":"#FECACA"}`}}>
-            <div style={{width:52,height:52,borderRadius:"50%",background:scorePct>=80?"var(--emerald)":scorePct>=60?"var(--gold-border)":"var(--ember)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",color:"#fff"}}><Icon.Award/></div>
-            <h2 style={{fontSize:32,fontWeight:700,letterSpacing:"-0.03em",marginBottom:4}}>{score} / {questions.length}</h2>
+          <div className="card card-p-lg" style={{textAlign:"center",marginBottom:24,background:scorePct>=80?"rgba(16,185,129,0.08)":scorePct>=60?"rgba(245,158,11,0.08)":"rgba(239,68,68,0.08)",border:`1px solid ${scorePct>=80?"rgba(16,185,129,0.2)":scorePct>=60?"rgba(245,158,11,0.2)":"rgba(239,68,68,0.2)"}`}}>
+            <div style={{width:56,height:56,borderRadius:"50%",background:scorePct>=80?"var(--emerald)":scorePct>=60?"var(--gold)":"var(--ember)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",color:"#fff",boxShadow:`0 8px 24px ${scorePct>=80?"rgba(16,185,129,0.3)":scorePct>=60?"rgba(245,158,11,0.3)":"rgba(239,68,68,0.3)"}`}}><Icon.Award/></div>
+            <h2 style={{fontSize:36,fontWeight:800,letterSpacing:"-0.04em",marginBottom:4}}>{score} / {questions.length}</h2>
             <p style={{fontSize:16,fontWeight:500,marginBottom:6}}>{scorePct}% — {scorePct>=80?"Excellent work":scorePct>=60?"Good progress":"Keep studying"}</p>
-            <p style={{fontSize:13,color:"var(--ink2)"}}>{score} correct · {questions.length-score} incorrect</p>
+            <p style={{fontSize:13,color:"var(--muted)"}}>{score} correct · {questions.length-score} incorrect</p>
           </div>
-
-          {/* Review */}
-          <h3 style={{fontSize:16,fontWeight:600,marginBottom:16}}>Full Review</h3>
+          <h3 style={{fontSize:16,fontWeight:700,marginBottom:16}}>Full Review</h3>
           <div className="stack gap-10">
             {questions.map((q,i)=>{const correct=answers[i]===q.answer;return(
-              <div key={i} className="card card-p" style={{borderLeft:`3px solid ${correct?"var(--emerald)":"var(--ember)"}`}}>
+              <div key={i} className="card card-p" style={{borderLeft:`2px solid ${correct?"var(--emerald)":"var(--ember)"}`}}>
                 <div className="row gap-8" style={{justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
                   <p style={{fontWeight:500,fontSize:14,flex:1,lineHeight:1.5}}>{i+1}. {q.q}</p>
                   <span className={`badge ${correct?"badge-green":"badge-red"}`} style={{flexShrink:0,marginLeft:8}}>{correct?"Correct":"Wrong"}</span>
@@ -1333,7 +1113,7 @@ Return ONLY this JSON structure, nothing else:
   );
 }
 
-// ── App ───────────────────────────────────────────────────────────────────────
+// ── App ────────────────────────────────────────────────────────────────────
 export default function App() {
   const[page,setPage]=useState("loading");
   const[user,setUser]=useState(null);
@@ -1341,22 +1121,14 @@ export default function App() {
   const[roadmap,setRoadmap]=useState(null);
   const[progress,setProgress]=useState(null);
   const[isDemo,setIsDemo]=useState(false);
-
   const[showEmailSettings,setShowEmailSettings]=useState(false);
   const[emailConfigured,setEmailConfigured]=useState(()=>{try{return!!(localStorage.getItem("ejs_service")&&localStorage.getItem("ejs_key"));}catch{return false;}});
   const[streakAlert,setStreakAlert]=useState(null);
 
-  // Register Service Worker for PWA (Installable App)
   useEffect(() => {
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-          .then((registration) => {
-            console.log('✅ Service Worker registered successfully!', registration);
-          })
-          .catch((error) => {
-            console.log('❌ Service Worker registration failed:', error);
-          });
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
       });
     }
   }, []);
@@ -1385,12 +1157,14 @@ export default function App() {
   const logout=async()=>{await supabase.auth.signOut();setUser(null);setProfile(null);setRoadmap(null);setProgress(null);setPage("landing");};
   const startDemo=()=>{setRoadmap(DEMO_ROADMAP);setProgress(DEMO_PROGRESS);setIsDemo(true);setPage("dashboard");};
   const exitDemo=()=>{setIsDemo(false);setRoadmap(null);setProgress(null);setUser(null);setPage("landing");};
-  const showNav=["dashboard","learn","test"].includes(page);const navUser=isDemo?{email:"demo@velorn.app"}:user;
+  const showNav=["dashboard","learn","test"].includes(page);
+  const navUser=isDemo?{email:"demo@velorn.app"}:user;
 
   if(page==="loading")return(
-    <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",flexDirection:"column",gap:12}}>
-      <div style={{width:32,height:32,border:"2px solid #E4E4E7",borderTop:"2px solid #18181B",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
-      <p style={{fontSize:14,color:"#71717A"}}>Loading Velorn</p>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",flexDirection:"column",gap:12,background:"#080A0F"}}>
+      <div style={{width:36,height:36,border:"2px solid rgba(255,255,255,0.07)",borderTop:"2px solid #6C8EFF",borderRadius:"50%",animation:"spin 0.8s linear infinite",boxShadow:"0 0 20px rgba(108,142,255,0.2)"}}/>
+      <p style={{fontSize:14,color:"#5A6680",fontFamily:"system-ui"}}>Loading Velorn</p>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 
@@ -1398,31 +1172,26 @@ export default function App() {
     <>
       <style>{css}</style>
 
-      {/* Streak alert */}
       {streakAlert==="lost"&&(
-        <div style={{background:"var(--ember-light)",borderBottom:"1px solid #FECACA",padding:"10px 24px",display:"flex",alignItems:"center",justifyContent:"center",gap:12,fontSize:13,color:"var(--ember)"}}>
+        <div style={{background:"rgba(239,68,68,0.1)",borderBottom:"1px solid rgba(239,68,68,0.2)",padding:"10px 24px",display:"flex",alignItems:"center",justifyContent:"center",gap:12,fontSize:13,color:"var(--ember)"}}>
           <Icon.AlertCircle/>
           <span>You lost your streak. Come back today to start a new one.{emailConfigured&&" A reminder has been sent."}</span>
           <button style={{background:"none",border:"none",cursor:"pointer",color:"var(--ember)",marginLeft:4}} onClick={()=>setStreakAlert(null)}><Icon.X/></button>
         </div>
       )}
 
-      {/* Nav */}
       {showNav&&<Nav user={navUser} onLogout={isDemo?exitDemo:logout} onNav={setPage} page={page} onOpenEmailSettings={()=>setShowEmailSettings(true)} emailConfigured={emailConfigured} isDemo={isDemo} onSignUp={()=>{exitDemo();setPage("auth");}}/>}
 
-      {/* Demo banner */}
       {isDemo&&(
         <div className="demo-banner">
-          <span style={{color:"#A1A1AA"}}>Demo mode</span>
+          <span style={{color:"var(--muted)"}}>Demo mode</span>
           <span>Exploring a sample Entrepreneurship roadmap</span>
           <button className="btn btn-primary btn-sm" onClick={()=>{exitDemo();setPage("auth");}}>Sign Up Free</button>
         </div>
       )}
 
-      {/* Email modal */}
-      {showEmailSettings&&!isDemo&&<EmailSettingsModal onClose={()=>{setShowEmailSettings(false);try{setEmailConfigured(!!(localStorage.getItem("ejs_service")&&localStorage.getItem("ejs_key")));}catch{}}} userEmail={user?.email} userName={profile?.full_name||user?.user_metadata?.full_name}/>}
+      {showEmailSettings&&!isDemo&&<EmailSettingsModal onClose={()=>{setShowEmailSettings(false);try{setEmailConfigured(!!(localStorage.getItem("ejs_service")&&localStorage.getItem("ejs_key")));}catch{}}}/>}
 
-      {/* Pages */}
       {page==="landing"&&<Landing onStart={()=>setPage("auth")} onDemo={startDemo}/>}
       {page==="auth"&&<Auth onAuth={onAuth}/>}
       {page==="onboard"&&user&&<Onboarding user={user} profile={profile} onDone={(rm,pg)=>{setRoadmap(rm);setProgress(pg);setPage("dashboard");}}/>}
