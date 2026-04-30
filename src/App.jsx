@@ -3,7 +3,14 @@ import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL  = "https://knqclhfxhkishaivowhe.supabase.co";
 const SUPABASE_ANON = "sb_publishable_xcwOjTEqwOgX6VHhB2krTA_YI1Swr5_";
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON, { auth: { lock: false } });
+// Fixed:
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  }
+});
 
 async function askClaude(messages) {
   const userMessage = messages.find(m => m.role === "user")?.content || "";
