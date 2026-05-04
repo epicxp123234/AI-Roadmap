@@ -929,7 +929,35 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
                 {lectures[active].action&&(<div className="lec-block lec-block-green"><div className="lec-block-label lec-block-label-green">Action Item</div><p className="lec-text">{lectures[active].action}</p></div>)}
                 {lectures[active].mistake&&(<div className="lec-block lec-block-red"><div className="lec-block-label lec-block-label-red">Common Mistake</div><p className="lec-text">{lectures[active].mistake}</p></div>)}
               </div>
-              {getTakeaway(lectures[active])&&(<div style={{background:"rgba(212,168,83,0.06)",border:"1px solid var(--gold-border)",borderRadius:var(--r),padding:"12px 16px",marginBottom:18,borderRadius:8}}><p style={{fontSize:10,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--gold)",marginBottom:5,fontFamily:"var(--font-mono)"}}>Key Takeaway</p><p style={{fontSize:14,fontWeight:500,color:"var(--ink)",lineHeight:1.6}}>{getTakeaway(lectures[active])}</p></div>)}
+              {getTakeaway(lectures[active]) && (
+  <div style={{
+    background: "rgba(212,168,83,0.06)",
+    border: "1px solid var(--gold-border)",
+    borderRadius: "var(--r)",           // ← Fixed: added quotes
+    padding: "12px 16px",
+    marginBottom: 18
+  }}>
+    <p style={{
+      fontSize: 10,
+      fontWeight: 500,
+      textTransform: "uppercase",
+      letterSpacing: "0.1em",
+      color: "var(--gold)",
+      marginBottom: 5,
+      fontFamily: "var(--font-mono)"
+    }}>
+      Key Takeaway
+    </p>
+    <p style={{
+      fontSize: 14,
+      fontWeight: 500,
+      color: "var(--ink)",
+      lineHeight: 1.6
+    }}>
+      {getTakeaway(lectures[active])}
+    </p>
+  </div>
+)}
               {lectures[active].homework&&(<div style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:8,padding:"14px 16px",marginBottom:18}}><p style={{fontSize:10,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--muted)",marginBottom:10,fontFamily:"var(--font-mono)"}}>Homework</p>{lectures[active].homework.map((t,i)=>(<div key={i} style={{display:"flex",gap:8,alignItems:"flex-start",marginBottom:i<lectures[active].homework.length-1?8:0}}><div style={{width:18,height:18,borderRadius:4,background:"var(--accent2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:600,color:"#fff",flexShrink:0,fontFamily:"var(--font-mono)"}}>{i+1}</div><p style={{fontSize:13,lineHeight:1.6,color:"var(--ink2)"}}>{t}</p></div>))}</div>)}
               <div style={{display:"flex",gap:8,justifyContent:"space-between",flexWrap:"wrap"}}>
                 <button className="btn btn-secondary row gap-6" onClick={()=>setActive(a=>Math.max(0,a-1))} disabled={active===0}><Icon.ChevronLeft/> Prev</button>
@@ -979,7 +1007,22 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
                   <button className="btn btn-secondary btn-sm row gap-6" onClick={submitTaskDoubt} disabled={loadingTaskDoubt||!taskDoubt.trim()}>{loadingTaskDoubt?<><Icon.Loader/>Thinking…</>:"Get a Hint"}</button>
                   {taskDoubtAnswer&&<div className="answer-box">{taskDoubtAnswer}</div>}
                 </div>
-                <button className="btn row gap-8" style={{justifyContent:"center",padding:"11px 20px",background:allDone?"var(--ink)":"var(--surface2)",color:allDone?"var(--bg)":"var(--muted)",border:`1px solid ${allDone?"var(--ink)":"var(--border)"}`,borderRadius:var(--r),cursor:allDone?"pointer":"not-allowed",borderRadius:8}} onClick={submitTask} disabled={loadingFeedback||!allDone}>{loadingFeedback?<><Icon.Loader/>Reviewing…</>:"Submit for Feedback"}</button>
+                <button 
+  className="btn row gap-8" 
+  style={{
+    justifyContent: "center",
+    padding: "11px 20px",
+    background: allDone ? "var(--ink)" : "var(--surface2)",
+    color: allDone ? "var(--bg)" : "var(--muted)",
+    border: `1px solid ${allDone ? "var(--ink)" : "var(--border)"}`,
+    borderRadius: "var(--r)",           // ← Fixed: added quotes
+    cursor: allDone ? "pointer" : "not-allowed"
+  }}
+  onClick={submitTask} 
+  disabled={loadingFeedback || !allDone}
+>
+  {loadingFeedback ? <><Icon.Loader/>Reviewing…</> : "Submit for Feedback"}
+</button>
                 {!allDone&&<p style={{textAlign:"center",fontSize:12,color:"var(--muted)",fontFamily:"var(--font-mono)"}}>Complete all {task.steps.length} fields to submit.</p>}
               </div>
             ):(
