@@ -7,6 +7,81 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: "velorn-auth" }
 });
 
+// ── EmailJS Config (hardcoded — users just toggle on/off) ──────────────────
+const EMAILJS_SERVICE  = "service_az5xx88";
+const EMAILJS_KEY      = "_22wrLmwQJNVFd-pa";
+const EMAILJS_WEEKLY   = "template_zheyc9c";   // Weekly progress
+const EMAILJS_CHECKIN  = "template_yr13akv";   // 3-day inactivity
+
+async function loadEmailJS() {
+  if (window.emailjs) return true;
+  try {
+    await new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js";
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+    window.emailjs.init(EMAILJS_KEY);
+    return true;
+  } catch { return false; }
+}
+
+async function sendWeeklyProgressEmail(userName, userEmail, roadmapTitle, currentDay, nextTopic, streak) {
+  try {
+    await loadEmailJS();
+    await window.emailjs.send(EMAILJS_SERVICE, EMAILJS_WEEKLY, {
+      to_name: userName, to_email: userEmail,
+      roadmap_title: roadmapTitle,
+      current_day: currentDay,
+      next_topic: nextTopic,
+      streak: streak,
+      app_url: "https://velorn.vercel.app"
+    });
+    return true;
+  } catch(e) { console.error("Weekly email error:", e); return false; }
+}
+
+async function sendCheckinEmail(userName, userEmail, nextTopic, daysAway) {
+  try {
+    await loadEmailJS();
+    await window.emailjs.send(EMAILJS_SERVICE, EMAILJS_CHECKIN, {
+      to_name: userName, to_email: userEmail,
+      next_topic: nextTopic,
+      days_away: daysAway,
+      app_url: "https://velorn.vercel.app"
+    });
+    return true;
+  } catch(e) { console.error("Check-in email error:", e); return false; }
+}
+
+async function sendStreakLostEmail(userName, userEmail, streak) {
+  try {
+    await loadEmailJS();
+    await window.emailjs.send(EMAILJS_SERVICE, EMAILJS_CHECKIN, {
+      to_name: userName, to_email: userEmail,
+      next_topic: "your next lesson",
+      days_away: "a few",
+      app_url: "https://velorn.vercel.app"
+    });
+    return true;
+  } catch(e) { return false; }
+}
+
+// ── Email prefs stored in localStorage ────────────────────────────────────
+function getEmailPrefs() {
+  try {
+    return {
+      weekly: localStorage.getItem("velorn_weekly_email") === "true",
+      checkin: localStorage.getItem("velorn_checkin_email") === "true",
+    };
+  } catch { return { weekly: false, checkin: false }; }
+}
+function setEmailPref(key, val) {
+  try { localStorage.setItem(`velorn_${key}_email`, val ? "true" : "false"); } catch {}
+}
+
+// ── Supabase helpers ───────────────────────────────────────────────────────
 async function askClaude(messages) {
   const userMessage = messages.find(m => m.role === "user")?.content || "";
   try {
@@ -16,7 +91,7 @@ async function askClaude(messages) {
     if (typeof data.answer === "string") return data.answer;
     if (data.answer?.content) return data.answer.content;
     return JSON.stringify(data);
-  } catch (e) { return ""; }
+  } catch { return ""; }
 }
 
 async function getProfile(userId) { const { data } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle(); return data; }
@@ -38,17 +113,8 @@ function dbToProgress(row) {
   return { currentMonth: row.current_month??1, currentWeek: row.current_week??1, currentDay: row.current_day??1, streak: row.streak??0, completedDays: row.completed_days??[], lastVisit: row.last_visit };
 }
 function progressToDb(p) { return { current_month: p.currentMonth, current_week: p.currentWeek, current_day: p.currentDay, streak: p.streak, completed_days: p.completedDays, last_visit: new Date().toISOString().slice(0,10) }; }
-function getEJS() { try { return { serviceId: localStorage.getItem("ejs_service")||"", templateId: localStorage.getItem("ejs_template")||"", publicKey: localStorage.getItem("ejs_key")||"" }; } catch(e) { return { serviceId:"", templateId:"", publicKey:"" }; } }
-const EJS = getEJS();
-async function sendStreakLostEmail(userName, userEmail, streak) {
-  if (!EJS.serviceId || !EJS.templateId || !EJS.publicKey) return false;
-  try {
-    if (!window.emailjs) { await new Promise((res,rej)=>{ const s=document.createElement("script"); s.src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); window.emailjs.init(EJS.publicKey); }
-    await window.emailjs.send(EJS.serviceId, EJS.templateId, { to_name: userName, to_email: userEmail, streak, app_name:"Velorn", login_url: window.location.href, message:`You had a ${streak}-day streak! Come back today.` });
-    return true;
-  } catch(e) { return false; }
-}
 
+// ── Icons ──────────────────────────────────────────────────────────────────
 const Icon = {
   ArrowRight: ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>,
   ChevronLeft: ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>,
@@ -67,49 +133,29 @@ const Icon = {
   Menu: ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
 };
 
-// 3D Brain SVG - stylized CGI-like neural brain illustration
+// ── 3D Brain SVG ───────────────────────────────────────────────────────────
 const BrainCGI = () => (
   <svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg" style={{width:"100%",height:"100%",filter:"drop-shadow(0 0 60px rgba(139,92,246,0.4))"}}>
     <defs>
-      <radialGradient id="brainGlow" cx="50%" cy="50%" r="50%">
-        <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.3"/>
-        <stop offset="100%" stopColor="#7c3aed" stopOpacity="0"/>
-      </radialGradient>
-      <radialGradient id="brainCore" cx="40%" cy="35%" r="60%">
-        <stop offset="0%" stopColor="#c4b5fd"/>
-        <stop offset="40%" stopColor="#8b5cf6"/>
-        <stop offset="100%" stopColor="#4c1d95"/>
-      </radialGradient>
-      <radialGradient id="brainShine" cx="30%" cy="25%" r="40%">
-        <stop offset="0%" stopColor="rgba(255,255,255,0.4)"/>
-        <stop offset="100%" stopColor="rgba(255,255,255,0)"/>
-      </radialGradient>
+      <radialGradient id="brainGlow" cx="50%" cy="50%" r="50%"><stop offset="0%" stopColor="#a78bfa" stopOpacity="0.3"/><stop offset="100%" stopColor="#7c3aed" stopOpacity="0"/></radialGradient>
+      <radialGradient id="brainCore" cx="40%" cy="35%" r="60%"><stop offset="0%" stopColor="#c4b5fd"/><stop offset="40%" stopColor="#8b5cf6"/><stop offset="100%" stopColor="#4c1d95"/></radialGradient>
+      <radialGradient id="brainShine" cx="30%" cy="25%" r="40%"><stop offset="0%" stopColor="rgba(255,255,255,0.4)"/><stop offset="100%" stopColor="rgba(255,255,255,0)"/></radialGradient>
       <filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
       <filter id="softglow"><feGaussianBlur stdDeviation="8" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     </defs>
-    {/* Outer glow */}
     <ellipse cx="250" cy="255" rx="180" ry="160" fill="url(#brainGlow)"/>
-    {/* Main brain body - left hemisphere */}
     <path d="M150 180 C130 160 110 170 105 195 C100 215 108 235 115 250 C125 270 120 290 130 305 C145 325 165 330 180 320 C195 335 200 350 215 355 C235 362 255 355 260 340 L255 180 C235 165 210 165 195 172 C180 158 165 162 150 180Z" fill="url(#brainCore)" opacity="0.9"/>
-    {/* Right hemisphere */}
     <path d="M350 180 C370 160 390 170 395 195 C400 215 392 235 385 250 C375 270 380 290 370 305 C355 325 335 330 320 320 C305 335 300 350 285 355 C265 362 245 355 240 340 L245 180 C265 165 290 165 305 172 C320 158 335 162 350 180Z" fill="url(#brainCore)" opacity="0.85"/>
-    {/* Center divide */}
     <path d="M250 170 L250 355" stroke="#a78bfa" strokeWidth="1.5" strokeDasharray="4,3" opacity="0.5"/>
-    {/* Brain folds - left */}
     <path d="M130 210 C145 205 160 215 155 230 C150 240 135 238 130 228Z" fill="#7c3aed" opacity="0.6"/>
     <path d="M118 250 C135 245 148 258 140 270 C133 280 118 275 115 262Z" fill="#6d28d9" opacity="0.5"/>
     <path d="M128 290 C143 285 155 298 148 308 C141 317 127 313 125 301Z" fill="#5b21b6" opacity="0.6"/>
-    <path d="M155 320 C170 312 182 324 176 335 C170 344 156 341 153 330Z" fill="#4c1d95" opacity="0.5"/>
-    {/* Brain folds - right */}
     <path d="M370 210 C355 205 340 215 345 230 C350 240 365 238 370 228Z" fill="#7c3aed" opacity="0.6"/>
     <path d="M382 250 C365 245 352 258 360 270 C367 280 382 275 385 262Z" fill="#6d28d9" opacity="0.5"/>
     <path d="M372 290 C357 285 345 298 352 308 C359 317 373 313 375 301Z" fill="#5b21b6" opacity="0.6"/>
-    <path d="M345 320 C330 312 318 324 324 335 C330 344 344 341 347 330Z" fill="#4c1d95" opacity="0.5"/>
-    {/* Top folds */}
     <path d="M185 178 C195 165 215 168 218 182 C220 192 208 198 198 192Z" fill="#8b5cf6" opacity="0.7"/>
     <path d="M235 172 C248 160 265 164 265 178 C265 188 252 192 242 185Z" fill="#7c3aed" opacity="0.6"/>
     <path d="M282 178 C295 165 312 170 312 184 C312 194 300 198 290 191Z" fill="#8b5cf6" opacity="0.7"/>
-    {/* Neural network lines */}
     <g filter="url(#glow)" opacity="0.7">
       <line x1="165" y1="215" x2="195" y2="240" stroke="#c4b5fd" strokeWidth="1"/>
       <line x1="195" y1="240" x2="220" y2="225" stroke="#c4b5fd" strokeWidth="1"/>
@@ -127,298 +173,175 @@ const BrainCGI = () => (
       <line x1="250" y1="308" x2="285" y2="322" stroke="#8b5cf6" strokeWidth="1"/>
       <line x1="285" y1="322" x2="322" y2="312" stroke="#8b5cf6" strokeWidth="1"/>
     </g>
-    {/* Neural nodes */}
     <g filter="url(#glow)">
       {[[165,215],[195,240],[220,225],[245,250],[275,230],[300,255],[330,238],[165,270],[200,285],[235,270],[265,290],[300,272],[335,288],[175,310],[215,320],[250,308],[285,322],[322,312]].map(([x,y],i)=>(
         <circle key={i} cx={x} cy={y} r="3.5" fill="#e9d5ff" opacity="0.9"/>
       ))}
     </g>
-    {/* Floating data particles */}
     <g filter="url(#softglow)" opacity="0.6">
       <circle cx="140" cy="165" r="2.5" fill="#f0abfc"><animate attributeName="cy" values="165;155;165" dur="3s" repeatCount="indefinite"/></circle>
       <circle cx="360" cy="170" r="2" fill="#c4b5fd"><animate attributeName="cy" values="170;160;170" dur="2.5s" repeatCount="indefinite"/></circle>
       <circle cx="250" cy="140" r="3" fill="#a78bfa"><animate attributeName="cy" values="140;130;140" dur="4s" repeatCount="indefinite"/></circle>
-      <circle cx="180" cy="370" r="2" fill="#ddd6fe"><animate attributeName="cy" values="370;378;370" dur="3.5s" repeatCount="indefinite"/></circle>
-      <circle cx="320" cy="365" r="2.5" fill="#c4b5fd"><animate attributeName="cy" values="365;373;365" dur="2.8s" repeatCount="indefinite"/></circle>
       <circle cx="108" cy="240" r="2" fill="#e9d5ff"><animate attributeName="cx" values="108;100;108" dur="3.2s" repeatCount="indefinite"/></circle>
       <circle cx="392" cy="235" r="2" fill="#e9d5ff"><animate attributeName="cx" values="392;400;392" dur="2.9s" repeatCount="indefinite"/></circle>
     </g>
-    {/* Shine overlay */}
     <path d="M150 180 C130 160 110 170 105 195 C100 215 108 235 115 250 C125 270 120 290 130 305 C145 325 165 330 180 320 C195 335 200 350 215 355 C235 362 255 355 260 340 L255 180 C235 165 210 165 195 172 C180 158 165 162 150 180Z" fill="url(#brainShine)" opacity="0.5"/>
-    <path d="M350 180 C370 160 390 170 395 195 C400 215 392 235 385 250 C375 270 380 290 370 305 C355 325 335 330 320 320 C305 335 300 350 285 355 C265 362 245 355 240 340 L245 180 C265 165 290 165 305 172 C320 158 335 162 350 180Z" fill="url(#brainShine)" opacity="0.3"/>
-    {/* Pulsing ring */}
     <circle cx="250" cy="262" r="155" fill="none" stroke="#8b5cf6" strokeWidth="0.5" opacity="0.4"><animate attributeName="r" values="155;165;155" dur="4s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.4;0.1;0.4" dur="4s" repeatCount="indefinite"/></circle>
     <circle cx="250" cy="262" r="175" fill="none" stroke="#7c3aed" strokeWidth="0.5" opacity="0.2"><animate attributeName="r" values="175;185;175" dur="5s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.2;0.05;0.2" dur="5s" repeatCount="indefinite"/></circle>
   </svg>
 );
 
+// ── CSS ────────────────────────────────────────────────────────────────────
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,600&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=DM+Mono:wght@400;500&display=swap');
-
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-
-  :root {
-    --bg: #0e0c0a;
-    --bg2: #141210;
-    --surface: #1a1714;
-    --surface2: #221e1b;
-    --surface3: #2a2520;
-    --border: rgba(255,255,255,0.07);
-    --border2: rgba(255,255,255,0.12);
-    --border3: rgba(255,255,255,0.20);
-    --ink: #f5f0e8;
-    --ink2: #c8bfb0;
-    --muted: #8a7f72;
-    --subtle: #5a5248;
-    --accent: #8b5cf6;
-    --accent2: #a78bfa;
-    --accent3: #c4b5fd;
-    --gold: #d4a853;
-    --gold2: #e8c07a;
-    --gold-light: rgba(212,168,83,0.10);
-    --gold-border: rgba(212,168,83,0.30);
-    --emerald: #4ade80;
-    --ember: #f87171;
-    --emerald-light: rgba(74,222,128,0.10);
-    --ember-light: rgba(248,113,113,0.10);
-    --blue-light: rgba(139,92,246,0.10);
-    --r: 8px;
-    --font: 'DM Sans', system-ui, sans-serif;
-    --font-display: 'Cormorant Garamond', Georgia, serif;
-    --font-mono: 'DM Mono', monospace;
+  :root{
+    --bg:#0e0c0a;--bg2:#141210;--surface:#1a1714;--surface2:#221e1b;--surface3:#2a2520;
+    --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);--border3:rgba(255,255,255,0.20);
+    --ink:#f5f0e8;--ink2:#c8bfb0;--muted:#8a7f72;--subtle:#5a5248;
+    --accent:#8b5cf6;--accent2:#a78bfa;--accent3:#c4b5fd;
+    --gold:#d4a853;--gold2:#e8c07a;--gold-light:rgba(212,168,83,0.10);--gold-border:rgba(212,168,83,0.30);
+    --emerald:#4ade80;--ember:#f87171;--emerald-light:rgba(74,222,128,0.10);--ember-light:rgba(248,113,113,0.10);--blue-light:rgba(139,92,246,0.10);
+    --r:8px;--font:'DM Sans',system-ui,sans-serif;--font-display:'Cormorant Garamond',Georgia,serif;--font-mono:'DM Mono',monospace;
   }
+  html{scroll-behavior:smooth;}
+  body{font-family:var(--font);background:var(--bg);color:var(--ink);min-height:100vh;width:100%;overflow-x:hidden;-webkit-font-smoothing:antialiased;}
+  body::after{content:'';position:fixed;inset:0;z-index:9999;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.035'/%3E%3C/svg%3E");pointer-events:none;opacity:0.4;}
+  #root{width:100%;position:relative;z-index:1;}
+  h1,h2,h3{font-family:var(--font-display);letter-spacing:-0.01em;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-18px)}}
+  @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+  @keyframes pulse{0%,100%{opacity:0.6}50%{opacity:1}}
+  .page{animation:fadeUp 0.5s cubic-bezier(0.22,1,0.36,1) both;}
+  .nav{position:fixed;top:0;left:0;right:0;z-index:200;height:60px;padding:0 40px;display:flex;align-items:center;justify-content:space-between;background:rgba(14,12,10,0.8);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);}
+  .nav-logo{font-family:var(--font);font-weight:700;font-size:14px;color:var(--ink);letter-spacing:0.05em;text-transform:uppercase;display:flex;align-items:center;gap:8px;}
+  .nav-logo-dot{width:6px;height:6px;background:var(--accent2);border-radius:50%;box-shadow:0 0 8px var(--accent2);animation:pulse 2s ease-in-out infinite;}
+  .nav-links{display:flex;align-items:center;gap:4px;}
+  .nav-link{font-size:13px;font-weight:400;color:var(--muted);background:none;border:none;cursor:pointer;padding:6px 12px;border-radius:6px;font-family:var(--font);transition:all 0.15s;}
+  .nav-link:hover{color:var(--ink);}
+  .nav-link.active{color:var(--ink);font-weight:500;}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer;transition:all 0.2s;border:none;border-radius:var(--r);outline:none;white-space:nowrap;letter-spacing:0.01em;}
+  .btn:disabled{opacity:0.35;cursor:not-allowed;}
+  .btn-primary{background:var(--ink);color:var(--bg);padding:10px 22px;letter-spacing:0.02em;}
+  .btn-primary:hover:not(:disabled){background:var(--ink2);transform:translateY(-1px);}
+  .btn-outline{background:transparent;color:var(--ink);padding:10px 22px;border:1px solid var(--border2);}
+  .btn-outline:hover:not(:disabled){border-color:var(--border3);background:var(--surface2);}
+  .btn-secondary{background:var(--surface2);color:var(--ink2);padding:10px 20px;border:1px solid var(--border);}
+  .btn-secondary:hover:not(:disabled){background:var(--surface3);border-color:var(--border2);color:var(--ink);}
+  .btn-ghost{background:transparent;color:var(--muted);padding:7px 11px;}
+  .btn-ghost:hover:not(:disabled){color:var(--ink2);background:var(--surface2);}
+  .btn-gold{background:var(--gold);color:var(--bg);padding:10px 22px;font-weight:600;}
+  .btn-gold:hover:not(:disabled){background:var(--gold2);transform:translateY(-1px);}
+  .btn-lg{padding:13px 28px;font-size:14px;border-radius:10px;letter-spacing:0.03em;}
+  .btn-sm{padding:6px 14px;font-size:12px;}
+  .btn-icon{padding:7px;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);transition:border-color 0.2s,background 0.2s;}
+  .card:hover{border-color:var(--border2);}
+  .card-p{padding:24px;}
+  .card-p-lg{padding:32px;}
+  .notepad{background:#f5f0e0;border-radius:4px;padding:32px 36px;position:relative;box-shadow:0 20px 60px rgba(0,0,0,0.5),0 4px 12px rgba(0,0,0,0.3);color:#1a1714;}
+  .notepad::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:repeating-linear-gradient(90deg,#c0392b 0px,#c0392b 8px,transparent 8px,transparent 12px);}
+  .notepad-lines{position:absolute;inset:0;top:12px;background-image:repeating-linear-gradient(transparent,transparent 27px,rgba(100,149,237,0.2) 27px,rgba(100,149,237,0.2) 28px);pointer-events:none;border-radius:4px;}
+  .notepad-pin{position:absolute;top:-12px;left:50%;transform:translateX(-50%);width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#7ecef4,#2196f3);box-shadow:0 2px 8px rgba(33,150,243,0.5);}
+  .notepad-tag{font-family:var(--font-mono);font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:#8a7f72;margin-bottom:14px;}
+  .notepad-title{font-family:var(--font-mono);font-size:clamp(22px,3vw,32px);font-weight:700;color:#1a1714;line-height:1.2;margin-bottom:16px;}
+  .notepad-title em{font-style:italic;color:#8b5cf6;font-family:var(--font-display);}
+  .notepad-body{font-family:var(--font-mono);font-size:13px;line-height:2;color:#3d3832;}
+  .field{display:flex;flex-direction:column;gap:6px;}
+  .label{font-size:11px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;font-family:var(--font-mono);}
+  .input{border:1px solid var(--border2);border-radius:var(--r);padding:10px 14px;font-family:var(--font);font-size:14px;color:var(--ink);background:var(--surface2);outline:none;transition:all 0.15s;}
+  .input:focus{border-color:var(--accent2);box-shadow:0 0 0 3px rgba(167,139,250,0.1);background:var(--surface3);}
+  .input::placeholder{color:var(--subtle);}
+  textarea.input{resize:vertical;min-height:88px;line-height:1.6;}
+  select.input{cursor:pointer;}
+  select.input option{background:var(--surface2);color:var(--ink);}
+  .badge{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:500;font-family:var(--font-mono);}
+  .badge-gold{background:var(--gold-light);color:var(--gold);border:1px solid var(--gold-border);}
+  .badge-green{background:var(--emerald-light);color:var(--emerald);border:1px solid rgba(74,222,128,0.2);}
+  .badge-red{background:var(--ember-light);color:var(--ember);border:1px solid rgba(248,113,113,0.2);}
+  .badge-blue{background:var(--blue-light);color:var(--accent2);border:1px solid rgba(139,92,246,0.2);}
+  .badge-neutral{background:var(--surface2);color:var(--ink2);border:1px solid var(--border2);}
+  .progress-track{background:var(--surface2);border-radius:999px;overflow:hidden;}
+  .progress-fill{height:100%;border-radius:999px;background:var(--accent2);transition:width 0.6s cubic-bezier(0.22,1,0.36,1);}
+  .progress-fill-gold{background:var(--gold);}
+  .progress-fill-green{background:var(--emerald);}
+  .container{max-width:900px;margin:0 auto;padding:0 24px;}
+  .container-wide{max-width:1200px;margin:0 auto;padding:0 40px;}
+  .stack{display:flex;flex-direction:column;}
+  .row{display:flex;align-items:center;}
+  .gap-2{gap:2px}.gap-4{gap:4px}.gap-6{gap:6px}.gap-7{gap:7px}.gap-8{gap:8px}.gap-10{gap:10px}.gap-12{gap:12px}.gap-14{gap:14px}.gap-16{gap:16px}.gap-20{gap:20px}.gap-24{gap:24px}.gap-32{gap:32px}
+  .divider{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13px;}
+  .divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--border);}
+  .stat-card{padding:20px 22px;}
+  .stat-label{font-size:10px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;font-family:var(--font-mono);}
+  .stat-value{font-size:32px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;line-height:1;font-family:var(--font-display);font-style:italic;}
+  .stat-sub{font-size:12px;color:var(--muted);margin-top:4px;font-family:var(--font-mono);}
+  .lec-block{padding:14px 18px;border-radius:var(--r);border:1px solid var(--border);margin-bottom:10px;}
+  .lec-block-green{background:rgba(74,222,128,0.04);border-color:rgba(74,222,128,0.15);}
+  .lec-block-red{background:rgba(248,113,113,0.04);border-color:rgba(248,113,113,0.15);}
+  .lec-block-blue{background:rgba(139,92,246,0.04);border-color:rgba(139,92,246,0.15);}
+  .lec-block-label{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:7px;font-family:var(--font-mono);}
+  .lec-block-label-green{color:var(--emerald);}
+  .lec-block-label-red{color:var(--ember);}
+  .lec-block-label-blue{color:var(--accent2);}
+  .lec-block-label-gold{color:var(--gold);}
+  .lec-text{font-size:14px;line-height:1.75;color:var(--ink2);}
+  .answer-box{margin-top:14px;padding:14px 18px;background:var(--surface2);border:1px solid var(--border);border-left:2px solid var(--accent2);border-radius:var(--r);font-size:14px;line-height:1.75;color:var(--ink2);white-space:pre-wrap;}
+  .lec-list-item{display:flex;align-items:flex-start;gap:9px;padding:9px 10px;border-radius:6px;cursor:pointer;transition:all 0.12s;font-size:12px;color:var(--muted);border:1px solid transparent;text-align:left;background:none;width:100%;font-family:var(--font);}
+  .lec-list-item:hover{background:var(--surface2);color:var(--ink2);}
+  .lec-list-item.active{background:var(--surface2);border-color:var(--border2);color:var(--ink);font-weight:500;}
+  .lec-num{width:20px;height:20px;border-radius:50%;background:var(--surface3);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--muted);flex-shrink:0;font-family:var(--font-mono);}
+  .lec-list-item.active .lec-num{background:var(--accent2);border-color:var(--accent2);color:#fff;}
+  .mcq-option{display:block;width:100%;text-align:left;padding:11px 15px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface2);font-family:var(--font);font-size:13px;color:var(--ink2);cursor:pointer;transition:all 0.12s;}
+  .mcq-option:hover{border-color:var(--accent2);color:var(--ink);background:var(--surface3);}
+  .mcq-option.selected{border-color:var(--accent2);background:rgba(139,92,246,0.08);color:var(--ink);font-weight:500;}
+  .mcq-option.correct{border-color:var(--emerald);background:var(--emerald-light);color:var(--emerald);}
+  .mcq-option.wrong{border-color:var(--ember);background:var(--ember-light);color:var(--ember);}
+  .btn-google{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:10px 18px;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--r);font-family:var(--font);font-size:13px;font-weight:500;color:var(--ink2);cursor:pointer;transition:all 0.15s;}
+  .btn-google:hover{background:var(--surface3);border-color:var(--border3);color:var(--ink);}
+  .demo-banner{background:var(--surface);border-bottom:1px solid var(--border);padding:9px 24px;display:flex;align-items:center;justify-content:center;gap:14px;font-size:12px;color:var(--ink2);position:fixed;top:60px;left:0;right:0;z-index:150;}
+  .section-label{font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:12px;}
+  .section-label::after{content:'';flex:1;height:1px;background:var(--border);}
+  .hamburger{display:none;background:none;border:none;cursor:pointer;color:var(--ink);padding:6px;}
+  .mobile-nav{display:none;position:fixed;top:60px;left:0;right:0;bottom:0;background:rgba(14,12,10,0.97);z-index:199;flex-direction:column;align-items:center;justify-content:center;gap:8px;}
+  .mobile-nav.open{display:flex;}
+  .mobile-nav-link{font-size:20px;font-weight:400;color:var(--ink2);background:none;border:none;cursor:pointer;padding:12px 24px;font-family:var(--font);transition:color 0.15s;}
+  .mobile-nav-link:hover,.mobile-nav-link.active{color:var(--ink);}
 
-  html { scroll-behavior: smooth; }
+  /* Toggle switch */
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--border);}
+  .toggle-row:last-child{border-bottom:none;}
+  .toggle{position:relative;width:44px;height:24px;flex-shrink:0;}
+  .toggle input{opacity:0;width:0;height:0;}
+  .toggle-slider{position:absolute;inset:0;background:var(--surface3);border-radius:24px;transition:0.2s;cursor:pointer;border:1px solid var(--border2);}
+  .toggle-slider::before{content:"";position:absolute;height:18px;width:18px;left:2px;bottom:2px;background:var(--muted);border-radius:50%;transition:0.2s;}
+  .toggle input:checked + .toggle-slider{background:var(--accent2);border-color:var(--accent2);}
+  .toggle input:checked + .toggle-slider::before{transform:translateX(20px);background:#fff;}
 
-  body {
-    font-family: var(--font);
-    background: var(--bg);
-    color: var(--ink);
-    min-height: 100vh;
-    width: 100%;
-    overflow-x: hidden;
-    -webkit-font-smoothing: antialiased;
+  @media(max-width:768px){
+    .nav{padding:0 20px;}
+    .nav-links{display:none;}
+    .hamburger{display:flex;}
+    .container{padding:0 20px;}
+    .container-wide{padding:0 20px;}
+    .card-p-lg{padding:20px;}
+    .hero-layout{flex-direction:column!important;text-align:center;}
+    .hero-text{max-width:100%!important;}
+    .hero-brain{width:260px!important;height:260px!important;margin:0 auto;}
+    .features-grid{grid-template-columns:1fr!important;}
+    .stats-grid{grid-template-columns:repeat(2,1fr)!important;}
+    .learn-layout{flex-direction:column!important;}
+    .learn-sidebar{width:100%!important;}
+    .notepad{padding:24px 20px!important;}
+    .hero-section{padding:100px 0 60px!important;}
+    .testimonials-grid{grid-template-columns:1fr!important;}
   }
-
-  /* Subtle grain texture */
-  body::after {
-    content: '';
-    position: fixed; inset: 0; z-index: 9999;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.035'/%3E%3C/svg%3E");
-    pointer-events: none; opacity: 0.4;
-  }
-
-  #root { width: 100%; position: relative; z-index: 1; }
-
-  h1,h2,h3 { font-family: var(--font-display); letter-spacing: -0.01em; }
-
-  @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes fadeUp { from { opacity:0; transform:translateY(24px); } to { opacity:1; transform:translateY(0); } }
-  @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
-  @keyframes float { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-18px); } }
-  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
-  @keyframes pulse { 0%,100%{opacity:0.6} 50%{opacity:1} }
-
-  .page { animation: fadeUp 0.5s cubic-bezier(0.22,1,0.36,1) both; }
-
-  /* ── Nav ── */
-  .nav {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 200;
-    height: 60px; padding: 0 40px;
-    display: flex; align-items: center; justify-content: space-between;
-    background: rgba(14,12,10,0.8);
-    backdrop-filter: blur(20px);
-    border-bottom: 1px solid var(--border);
-    transition: background 0.3s;
-  }
-  .nav-logo {
-    font-family: var(--font);
-    font-weight: 700; font-size: 14px;
-    color: var(--ink); letter-spacing: 0.05em;
-    text-transform: uppercase; display: flex; align-items: center; gap: 8px;
-  }
-  .nav-logo-dot { width: 6px; height: 6px; background: var(--accent2); border-radius: 50%; box-shadow: 0 0 8px var(--accent2); animation: pulse 2s ease-in-out infinite; }
-  .nav-links { display: flex; align-items: center; gap: 4px; }
-  .nav-link { font-size: 13px; font-weight: 400; color: var(--muted); background: none; border: none; cursor: pointer; padding: 6px 12px; border-radius: 6px; font-family: var(--font); transition: all 0.15s; }
-  .nav-link:hover { color: var(--ink); }
-  .nav-link.active { color: var(--ink); font-weight: 500; }
-
-  /* ── Buttons ── */
-  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; font-family: var(--font); font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; border: none; border-radius: var(--r); outline: none; white-space: nowrap; letter-spacing: 0.01em; }
-  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
-
-  .btn-primary { background: var(--ink); color: var(--bg); padding: 10px 22px; letter-spacing: 0.02em; }
-  .btn-primary:hover:not(:disabled) { background: var(--ink2); transform: translateY(-1px); }
-
-  .btn-outline { background: transparent; color: var(--ink); padding: 10px 22px; border: 1px solid var(--border2); }
-  .btn-outline:hover:not(:disabled) { border-color: var(--border3); background: var(--surface2); }
-
-  .btn-secondary { background: var(--surface2); color: var(--ink2); padding: 10px 20px; border: 1px solid var(--border); }
-  .btn-secondary:hover:not(:disabled) { background: var(--surface3); border-color: var(--border2); color: var(--ink); }
-
-  .btn-ghost { background: transparent; color: var(--muted); padding: 7px 11px; }
-  .btn-ghost:hover:not(:disabled) { color: var(--ink2); background: var(--surface2); }
-
-  .btn-gold { background: var(--gold); color: var(--bg); padding: 10px 22px; font-weight: 600; }
-  .btn-gold:hover:not(:disabled) { background: var(--gold2); transform: translateY(-1px); }
-
-  .btn-lg { padding: 13px 28px; font-size: 14px; border-radius: 10px; letter-spacing: 0.03em; }
-  .btn-sm { padding: 6px 14px; font-size: 12px; }
-  .btn-icon { padding: 7px; }
-
-  /* ── Cards ── */
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); transition: border-color 0.2s, background 0.2s; }
-  .card:hover { border-color: var(--border2); }
-  .card-p { padding: 24px; }
-  .card-p-lg { padding: 32px; }
-
-  /* ── Notepad card (funkatorium style) ── */
-  .notepad {
-    background: #f5f0e0;
-    border-radius: 4px;
-    padding: 32px 36px;
-    position: relative;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.3);
-    color: #1a1714;
-  }
-  .notepad::before {
-    content: '';
-    position: absolute; top: 0; left: 0; right: 0;
-    height: 3px;
-    background: repeating-linear-gradient(90deg, #c0392b 0px, #c0392b 8px, transparent 8px, transparent 12px);
-  }
-  .notepad-lines {
-    position: absolute; inset: 0; top: 12px;
-    background-image: repeating-linear-gradient(transparent, transparent 27px, rgba(100,149,237,0.2) 27px, rgba(100,149,237,0.2) 28px);
-    pointer-events: none; border-radius: 4px;
-  }
-  .notepad-pin {
-    position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
-    width: 18px; height: 18px; border-radius: 50%;
-    background: radial-gradient(circle at 35% 35%, #7ecef4, #2196f3);
-    box-shadow: 0 2px 8px rgba(33,150,243,0.5);
-  }
-  .notepad-tag { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: #8a7f72; margin-bottom: 14px; }
-  .notepad-title { font-family: var(--font-mono); font-size: clamp(22px, 3vw, 32px); font-weight: 700; color: #1a1714; line-height: 1.2; margin-bottom: 16px; }
-  .notepad-title em { font-style: italic; color: #8b5cf6; font-family: var(--font-display); }
-  .notepad-body { font-family: var(--font-mono); font-size: 13px; line-height: 2; color: #3d3832; }
-
-  /* ── Form ── */
-  .field { display: flex; flex-direction: column; gap: 6px; }
-  .label { font-size: 11px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-family: var(--font-mono); }
-  .input { border: 1px solid var(--border2); border-radius: var(--r); padding: 10px 14px; font-family: var(--font); font-size: 14px; color: var(--ink); background: var(--surface2); outline: none; transition: all 0.15s; }
-  .input:focus { border-color: var(--accent2); box-shadow: 0 0 0 3px rgba(167,139,250,0.1); background: var(--surface3); }
-  .input::placeholder { color: var(--subtle); }
-  textarea.input { resize: vertical; min-height: 88px; line-height: 1.6; }
-  select.input { cursor: pointer; }
-  select.input option { background: var(--surface2); color: var(--ink); }
-
-  /* ── Badge ── */
-  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 500; font-family: var(--font-mono); }
-  .badge-gold { background: var(--gold-light); color: var(--gold); border: 1px solid var(--gold-border); }
-  .badge-green { background: var(--emerald-light); color: var(--emerald); border: 1px solid rgba(74,222,128,0.2); }
-  .badge-red { background: var(--ember-light); color: var(--ember); border: 1px solid rgba(248,113,113,0.2); }
-  .badge-blue { background: var(--blue-light); color: var(--accent2); border: 1px solid rgba(139,92,246,0.2); }
-  .badge-neutral { background: var(--surface2); color: var(--ink2); border: 1px solid var(--border2); }
-
-  /* ── Progress ── */
-  .progress-track { background: var(--surface2); border-radius: 999px; overflow: hidden; }
-  .progress-fill { height: 100%; border-radius: 999px; background: var(--accent2); transition: width 0.6s cubic-bezier(0.22,1,0.36,1); }
-  .progress-fill-gold { background: var(--gold); }
-  .progress-fill-green { background: var(--emerald); }
-
-  /* ── Layout ── */
-  .container { max-width: 900px; margin: 0 auto; padding: 0 24px; }
-  .container-wide { max-width: 1200px; margin: 0 auto; padding: 0 40px; }
-  .stack { display: flex; flex-direction: column; }
-  .row { display: flex; align-items: center; }
-  .gap-2{gap:2px}.gap-4{gap:4px}.gap-6{gap:6px}.gap-8{gap:8px}.gap-10{gap:10px}.gap-12{gap:12px}.gap-14{gap:14px}.gap-16{gap:16px}.gap-20{gap:20px}.gap-24{gap:24px}.gap-32{gap:32px}
-
-  /* ── Divider ── */
-  .divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 13px; }
-  .divider::before,.divider::after { content:""; flex:1; height:1px; background: var(--border); }
-
-  /* ── Stat card ── */
-  .stat-card { padding: 20px 22px; }
-  .stat-label { font-size: 10px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; font-family: var(--font-mono); }
-  .stat-value { font-size: 32px; font-weight: 600; color: var(--ink); letter-spacing: -0.02em; line-height: 1; font-family: var(--font-display); font-style: italic; }
-  .stat-sub { font-size: 12px; color: var(--muted); margin-top: 4px; font-family: var(--font-mono); }
-
-  /* ── Lecture blocks ── */
-  .lec-block { padding: 14px 18px; border-radius: var(--r); border: 1px solid var(--border); margin-bottom: 10px; }
-  .lec-block-green { background: rgba(74,222,128,0.04); border-color: rgba(74,222,128,0.15); }
-  .lec-block-red { background: rgba(248,113,113,0.04); border-color: rgba(248,113,113,0.15); }
-  .lec-block-blue { background: rgba(139,92,246,0.04); border-color: rgba(139,92,246,0.15); }
-  .lec-block-label { font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 7px; font-family: var(--font-mono); }
-  .lec-block-label-green { color: var(--emerald); }
-  .lec-block-label-red { color: var(--ember); }
-  .lec-block-label-blue { color: var(--accent2); }
-  .lec-block-label-gold { color: var(--gold); }
-  .lec-text { font-size: 14px; line-height: 1.75; color: var(--ink2); }
-
-  /* ── Answer box ── */
-  .answer-box { margin-top: 14px; padding: 14px 18px; background: var(--surface2); border: 1px solid var(--border); border-left: 2px solid var(--accent2); border-radius: var(--r); font-size: 14px; line-height: 1.75; color: var(--ink2); white-space: pre-wrap; }
-
-  /* ── Lecture sidebar ── */
-  .lec-list-item { display: flex; align-items: flex-start; gap: 9px; padding: 9px 10px; border-radius: 6px; cursor: pointer; transition: all 0.12s; font-size: 12px; color: var(--muted); border: 1px solid transparent; text-align: left; background: none; width: 100%; font-family: var(--font); }
-  .lec-list-item:hover { background: var(--surface2); color: var(--ink2); }
-  .lec-list-item.active { background: var(--surface2); border-color: var(--border2); color: var(--ink); font-weight: 500; }
-  .lec-num { width: 20px; height: 20px; border-radius: 50%; background: var(--surface3); border: 1px solid var(--border2); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; color: var(--muted); flex-shrink: 0; font-family: var(--font-mono); }
-  .lec-list-item.active .lec-num { background: var(--accent2); border-color: var(--accent2); color: #fff; }
-
-  /* ── MCQ ── */
-  .mcq-option { display: block; width: 100%; text-align: left; padding: 11px 15px; border: 1px solid var(--border); border-radius: var(--r); background: var(--surface2); font-family: var(--font); font-size: 13px; color: var(--ink2); cursor: pointer; transition: all 0.12s; }
-  .mcq-option:hover { border-color: var(--accent2); color: var(--ink); background: var(--surface3); }
-  .mcq-option.selected { border-color: var(--accent2); background: rgba(139,92,246,0.08); color: var(--ink); font-weight: 500; }
-  .mcq-option.correct { border-color: var(--emerald); background: var(--emerald-light); color: var(--emerald); }
-  .mcq-option.wrong { border-color: var(--ember); background: var(--ember-light); color: var(--ember); }
-
-  /* ── Google button ── */
-  .btn-google { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 10px 18px; background: var(--surface2); border: 1px solid var(--border2); border-radius: var(--r); font-family: var(--font); font-size: 13px; font-weight: 500; color: var(--ink2); cursor: pointer; transition: all 0.15s; }
-  .btn-google:hover { background: var(--surface3); border-color: var(--border3); color: var(--ink); }
-
-  /* ── Demo banner ── */
-  .demo-banner { background: var(--surface); border-bottom: 1px solid var(--border); padding: 9px 24px; display: flex; align-items: center; justify-content: center; gap: 14px; font-size: 12px; color: var(--ink2); position: fixed; top: 60px; left: 0; right: 0; z-index: 150; }
-
-  /* ── Skeleton ── */
-  .skeleton { background: linear-gradient(90deg, var(--surface2) 25%, var(--surface3) 50%, var(--surface2) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 6px; }
-
-  /* ── Section divider ── */
-  .section-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 12px; }
-  .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-
-  /* ── Hamburger menu for mobile ── */
-  .hamburger { display: none; background: none; border: none; cursor: pointer; color: var(--ink); padding: 6px; }
-
-  /* ── Mobile nav drawer ── */
-  .mobile-nav { display: none; position: fixed; top: 60px; left: 0; right: 0; bottom: 0; background: rgba(14,12,10,0.97); z-index: 199; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
-  .mobile-nav.open { display: flex; }
-  .mobile-nav-link { font-size: 20px; font-weight: 400; color: var(--ink2); background: none; border: none; cursor: pointer; padding: 12px 24px; font-family: var(--font); transition: color 0.15s; }
-  .mobile-nav-link:hover, .mobile-nav-link.active { color: var(--ink); }
-
-  /* ── Responsive ── */
-  @media(max-width: 768px) {
-    .nav { padding: 0 20px; }
-    .nav-links { display: none; }
-    .hamburger { display: flex; }
-    .container { padding: 0 20px; }
-    .container-wide { padding: 0 20px; }
-    .card-p-lg { padding: 20px; }
-    .hero-layout { flex-direction: column !important; text-align: center; }
-    .hero-text { max-width: 100% !important; }
-    .hero-brain { width: 280px !important; height: 280px !important; margin: 0 auto; }
-    .features-grid { grid-template-columns: 1fr !important; }
-    .stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
-    .learn-layout { flex-direction: column !important; }
-    .learn-sidebar { width: 100% !important; }
-    .notepad { padding: 24px 20px !important; }
-    .hero-section { padding: 100px 0 60px !important; }
-    .testimonials-grid { grid-template-columns: 1fr !important; }
-  }
-  @media(max-width: 480px) {
-    .stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
-    .stat-value { font-size: 26px !important; }
-    .nav-logo span { display: none; }
+  @media(max-width:480px){
+    .stats-grid{grid-template-columns:repeat(2,1fr)!important;}
+    .stat-value{font-size:26px!important;}
+    .nav-logo span{display:none;}
   }
 `;
 
@@ -435,69 +358,87 @@ const DEMO_THEMES=["Business Foundations","Market Research","Building Your Produ
 const DEMO_ROADMAP={title:"Entrepreneurship — Demo Roadmap",months:Array.from({length:6},(_,mi)=>({month:mi+1,theme:DEMO_THEMES[mi],focus:`Month ${mi+1}: ${DEMO_THEMES[mi]}`,weeks:Array.from({length:4},(_,wi)=>({week:wi+1,goal:`Week ${wi+1} — ${DEMO_THEMES[mi]}`,days:Array.from({length:7},(_,di)=>({day:di+1,task:di===6?`Review Week ${wi+1}`:`${DEMO_THEMES[mi]}: sub-topic ${di+1}`})),testTopic:DEMO_THEMES[mi]}))}))};
 const DEMO_PROGRESS={currentMonth:1,currentWeek:1,currentDay:1,streak:3,completedDays:["m1w1d1","m1w1d2","m1w1d3"]};
 
-function EmailSettingsModal({ onClose }) {
-  const [svc,setSvc]=useState(localStorage.getItem("ejs_service")||"");
-  const [tpl,setTpl]=useState(localStorage.getItem("ejs_template")||"");
-  const [key,setKey]=useState(localStorage.getItem("ejs_key")||"");
-  const [saved,setSaved]=useState(false);
-  const save=()=>{localStorage.setItem("ejs_service",svc);localStorage.setItem("ejs_template",tpl);localStorage.setItem("ejs_key",key);EJS.serviceId=svc;EJS.templateId=tpl;EJS.publicKey=key;setSaved(true);setTimeout(()=>setSaved(false),2000);};
+// ── Email Settings Modal — simple toggles only ─────────────────────────────
+function EmailSettingsModal({ onClose, userEmail, userName, roadmap, progress }) {
+  const [prefs, setPrefs] = useState(getEmailPrefs());
+  const [saved, setSaved] = useState(false);
+
+  const toggle = (key) => {
+    const newVal = !prefs[key];
+    setEmailPref(key, newVal);
+    setPrefs(p => ({ ...p, [key]: newVal }));
+  };
+
+  const handleSave = () => {
+    setSaved(true);
+    setTimeout(() => { setSaved(false); onClose(); }, 1200);
+  };
+
+  const nextTopic = (() => {
+    try {
+      const { currentMonth=1, currentWeek=1, currentDay=1 } = progress || {};
+      return roadmap?.months?.[currentMonth-1]?.weeks?.[currentWeek-1]?.goal || "your next lesson";
+    } catch { return "your next lesson"; }
+  })();
+
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:20,backdropFilter:"blur(8px)"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div className="card card-p-lg" style={{width:"100%",maxWidth:440}}>
-        <div className="row gap-8" style={{justifyContent:"space-between",marginBottom:20}}>
-          <div><h3 style={{fontSize:16,fontWeight:600,marginBottom:2,fontFamily:"var(--font-display)"}}>Email Reminders</h3><p style={{fontSize:12,color:"var(--muted)"}}>Get notified when you miss a day</p></div>
+      <div className="card card-p-lg" style={{width:"100%",maxWidth:420}}>
+        <div className="row gap-8" style={{justifyContent:"space-between",marginBottom:6}}>
+          <h3 style={{fontFamily:"var(--font-display)",fontSize:22,fontWeight:400}}>Email Reminders</h3>
           <button className="btn btn-ghost btn-icon" onClick={onClose}><Icon.X/></button>
         </div>
-        <div className="stack gap-12">
-          <div className="field"><label className="label">Service ID</label><input className="input" placeholder="service_abc123" value={svc} onChange={e=>setSvc(e.target.value)}/></div>
-          <div className="field"><label className="label">Template ID</label><input className="input" placeholder="template_xyz789" value={tpl} onChange={e=>setTpl(e.target.value)}/></div>
-          <div className="field"><label className="label">Public Key</label><input className="input" placeholder="AbCdEfGhIj" value={key} onChange={e=>setKey(e.target.value)}/></div>
+        <p style={{fontSize:12,color:"var(--muted)",marginBottom:24,fontFamily:"var(--font-mono)"}}>Sent to {userEmail}</p>
+
+        <div className="toggle-row">
+          <div>
+            <p style={{fontSize:14,fontWeight:500,color:"var(--ink)",marginBottom:3}}>Weekly progress update</p>
+            <p style={{fontSize:12,color:"var(--muted)"}}>Every Monday — your streak, next topic, and progress</p>
+          </div>
+          <label className="toggle">
+            <input type="checkbox" checked={prefs.weekly} onChange={()=>toggle("weekly")}/>
+            <span className="toggle-slider"/>
+          </label>
         </div>
-        <div className="row gap-8" style={{marginTop:20}}>
-          <button className="btn btn-primary" onClick={save} style={{flex:1}}>{saved?"✓ Saved":"Save"}</button>
-          <button className="btn btn-secondary" onClick={onClose} style={{flex:1}}>Cancel</button>
+
+        <div className="toggle-row">
+          <div>
+            <p style={{fontSize:14,fontWeight:500,color:"var(--ink)",marginBottom:3}}>Professor Max check-in</p>
+            <p style={{fontSize:12,color:"var(--muted)"}}>If you miss 3 days — a personal nudge to come back</p>
+          </div>
+          <label className="toggle">
+            <input type="checkbox" checked={prefs.checkin} onChange={()=>toggle("checkin")}/>
+            <span className="toggle-slider"/>
+          </label>
         </div>
+
+        <button className="btn btn-primary" style={{width:"100%",justifyContent:"center",marginTop:24}} onClick={handleSave}>
+          {saved ? "✓ Saved!" : "Save Preferences"}
+        </button>
       </div>
     </div>
   );
 }
 
+// ── Nav ────────────────────────────────────────────────────────────────────
 function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, isDemo, onSignUp }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const links = user ? ["dashboard","learn","test"] : [];
   return (
     <>
       <nav className="nav">
-        <div className="nav-logo">
-          <div className="nav-logo-dot"/>
-          <span>Velorn</span>
-        </div>
-        {user && (
-          <div className="nav-links">
-            {links.map(p=>(
-              <button key={p} onClick={()=>{onNav(p);setMobileOpen(false);}} className={`nav-link ${page===p?"active":""}`}>
-                {p==="learn"?"Learn":p==="test"?"Test":"Dashboard"}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="nav-logo"><div className="nav-logo-dot"/><span>Velorn</span></div>
+        {user && (<div className="nav-links">{links.map(p=>(<button key={p} onClick={()=>{onNav(p);setMobileOpen(false);}} className={`nav-link ${page===p?"active":""}`}>{p==="learn"?"Learn":p==="test"?"Test":"Dashboard"}</button>))}</div>)}
         <div className="row gap-8">
           {user && !isDemo && <button onClick={onOpenEmailSettings} className="btn btn-ghost btn-sm row gap-6"><Icon.Bell/></button>}
-          {user && (isDemo
-            ? <button className="btn btn-primary btn-sm" onClick={onSignUp}>Sign Up</button>
-            : <button className="btn btn-ghost btn-sm btn-icon" onClick={onLogout}><Icon.LogOut/></button>
-          )}
+          {user && (isDemo ? <button className="btn btn-primary btn-sm" onClick={onSignUp}>Sign Up</button> : <button className="btn btn-ghost btn-sm btn-icon" onClick={onLogout}><Icon.LogOut/></button>)}
           {user && <button className="hamburger" onClick={()=>setMobileOpen(o=>!o)}><Icon.Menu/></button>}
           {!user && <button className="btn btn-outline btn-sm" onClick={()=>onNav("auth")}>Sign In</button>}
         </div>
       </nav>
       {user && (
         <div className={`mobile-nav ${mobileOpen?"open":""}`}>
-          {links.map(p=>(
-            <button key={p} onClick={()=>{onNav(p);setMobileOpen(false);}} className={`mobile-nav-link ${page===p?"active":""}`}>
-              {p==="learn"?"Learn":p==="test"?"Test":"Dashboard"}
-            </button>
-          ))}
+          {links.map(p=>(<button key={p} onClick={()=>{onNav(p);setMobileOpen(false);}} className={`mobile-nav-link ${page===p?"active":""}`}>{p==="learn"?"Learn":p==="test"?"Test":"Dashboard"}</button>))}
           <button className="mobile-nav-link" onClick={()=>{onOpenEmailSettings();setMobileOpen(false);}}>Reminders</button>
           <button className="mobile-nav-link" style={{color:"var(--ember)"}} onClick={()=>{onLogout();setMobileOpen(false);}}>Sign Out</button>
         </div>
@@ -506,6 +447,7 @@ function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, isDemo, onSignU
   );
 }
 
+// ── Landing ────────────────────────────────────────────────────────────────
 function Landing({ onStart, onDemo }) {
   const [typed, setTyped] = useState("");
   const [focused, setFocused] = useState(false);
@@ -515,111 +457,68 @@ function Landing({ onStart, onDemo }) {
 
   return (
     <div style={{minHeight:"100vh",background:"var(--bg)",overflowX:"hidden"}}>
-
-      {/* ── Hero Section ── */}
       <section className="hero-section" style={{paddingTop:120,paddingBottom:80,position:"relative",overflow:"hidden"}}>
-        {/* Dark atmospheric gradient bg */}
         <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 70% 40%, rgba(139,92,246,0.12) 0%, transparent 60%)",pointerEvents:"none"}}/>
         <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 20% 80%, rgba(212,168,83,0.06) 0%, transparent 50%)",pointerEvents:"none"}}/>
-
         <div className="container-wide">
           <div className="hero-layout" style={{display:"flex",alignItems:"center",gap:60,minHeight:"calc(100vh - 200px)"}}>
-
-            {/* Left text */}
             <div className="hero-text" style={{flex:1,maxWidth:560,zIndex:1}}>
               <div style={{fontFamily:"var(--font-mono)",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",color:"var(--muted)",marginBottom:24,display:"flex",alignItems:"center",gap:10}}>
                 <span style={{width:5,height:5,borderRadius:"50%",background:"var(--emerald)",display:"inline-block",boxShadow:"0 0 8px var(--emerald)"}}/>
                 Free for students aged 13–18
               </div>
-
               <h1 style={{fontFamily:"var(--font-display)",fontSize:"clamp(44px,5.5vw,72px)",fontWeight:300,lineHeight:1.05,color:"var(--ink)",marginBottom:24,letterSpacing:"-0.01em"}}>
-                Learn anything.<br/>
-                <em style={{fontStyle:"italic",fontWeight:600,color:"var(--accent3)"}}>Master it fast.</em>
+                Learn anything.<br/><em style={{fontStyle:"italic",fontWeight:600,color:"var(--accent3)"}}>Master it fast.</em>
               </h1>
-
               <p style={{fontSize:"clamp(14px,1.8vw,17px)",color:"var(--muted)",lineHeight:1.8,marginBottom:40,maxWidth:460}}>
                 Pick any skill. Velorn builds your complete 6-month roadmap — daily lessons, weekly tests, and an AI professor that knows your subject inside out.
               </p>
-
-              {/* Input CTA */}
               <div style={{marginBottom:20}}>
                 <div style={{display:"flex",alignItems:"center",background:"var(--surface)",border:`1px solid ${focused?"var(--accent2)":"var(--border2)"}`,borderRadius:10,overflow:"hidden",boxShadow:focused?"0 0 0 3px rgba(167,139,250,0.1)":"0 8px 32px rgba(0,0,0,0.3)",transition:"all 0.2s",maxWidth:500}}>
-                  <input value={typed} onChange={e=>setTyped(e.target.value)} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)}
-                    placeholder={`e.g. ${examples[exIdx]}`}
-                    style={{flex:1,padding:"13px 18px",border:"none",outline:"none",fontSize:14,fontFamily:"var(--font)",background:"transparent",color:"var(--ink)"}}
-                    onKeyDown={e=>e.key==="Enter"&&onStart()}
-                  />
-                  <button className="btn btn-primary" style={{margin:5,borderRadius:7,padding:"9px 18px",flexShrink:0,fontSize:13}} onClick={onStart}>
-                    Build Roadmap →
-                  </button>
+                  <input value={typed} onChange={e=>setTyped(e.target.value)} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} placeholder={`e.g. ${examples[exIdx]}`} style={{flex:1,padding:"13px 18px",border:"none",outline:"none",fontSize:14,fontFamily:"var(--font)",background:"transparent",color:"var(--ink)"}} onKeyDown={e=>e.key==="Enter"&&onStart()}/>
+                  <button className="btn btn-primary" style={{margin:5,borderRadius:7,padding:"9px 18px",flexShrink:0,fontSize:13}} onClick={onStart}>Build Roadmap →</button>
                 </div>
                 <p style={{fontSize:11,color:"var(--subtle)",marginTop:8,fontFamily:"var(--font-mono)"}}>No credit card · 30 seconds to set up</p>
               </div>
-
-              <button className="btn btn-ghost btn-sm row gap-6" onClick={onDemo} style={{color:"var(--muted)",paddingLeft:0}}>
-                <Icon.Eye/> See a demo first
-              </button>
-
-              {/* Founded by */}
-              <div style={{marginTop:48,fontFamily:"var(--font-mono)",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",color:"var(--subtle)"}}>
-                Built for ambitious students
-              </div>
+              <button className="btn btn-ghost btn-sm row gap-6" onClick={onDemo} style={{color:"var(--muted)",paddingLeft:0}}><Icon.Eye/> See a demo first</button>
+              <div style={{marginTop:48,fontFamily:"var(--font-mono)",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",color:"var(--subtle)"}}>Built for ambitious students</div>
             </div>
-
-            {/* Right — 3D Brain CGI */}
-            <div className="hero-brain" style={{width:420,height:420,flexShrink:0,position:"relative",zIndex:1,animation:"float 6s ease-in-out infinite"}}>
-              <BrainCGI/>
-            </div>
+            <div className="hero-brain" style={{width:420,height:420,flexShrink:0,position:"relative",zIndex:1,animation:"float 6s ease-in-out infinite"}}><BrainCGI/></div>
           </div>
         </div>
       </section>
 
-      {/* ── Notepad Section (like funkatorium) ── */}
       <section style={{padding:"80px 0",background:"var(--bg2)"}}>
         <div className="container">
           <div style={{display:"flex",justifyContent:"center"}}>
             <div className="notepad" style={{maxWidth:680,width:"100%",position:"relative"}}>
-              <div className="notepad-lines"/>
-              <div className="notepad-pin"/>
+              <div className="notepad-lines"/><div className="notepad-pin"/>
               <div className="notepad-tag">The Approach</div>
               <div className="notepad-title">AI <em>amplifies</em> learning.</div>
-              <p className="notepad-body">
-                Every lesson here is built around <em>your</em> specific goal — not a generic curriculum.<br/>
-                Professor Max knows your subject and explains it like a knowledgeable friend.<br/>
-                Your roadmap. Your pace. Built to know your level.
-              </p>
+              <p className="notepad-body">Every lesson here is built around <em>your</em> specific goal — not a generic curriculum.<br/>Professor Max knows your subject and explains it like a knowledgeable friend.<br/>Your roadmap. Your pace. Built to know your level.</p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── Who is this for section ── */}
       <section style={{padding:"80px 0"}}>
         <div className="container">
           <div style={{textAlign:"center",marginBottom:48}}>
             <div className="section-label" style={{justifyContent:"center",marginBottom:16}}>Who is this for?</div>
-            <h2 style={{fontFamily:"var(--font-display)",fontSize:"clamp(32px,4vw,52px)",fontWeight:300,color:"var(--ink)",letterSpacing:"-0.01em"}}>Find your path.</h2>
+            <h2 style={{fontFamily:"var(--font-display)",fontSize:"clamp(32px,4vw,52px)",fontWeight:300,color:"var(--ink)"}}>Find your path.</h2>
           </div>
           <div className="features-grid" style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
-            {[
-              {tag:"STUDENTS",title:"Learn anything you want.",desc:"Chess, coding, design, music — type any goal and get a structured 6-month plan that actually works.",cta:"See how →"},
-              {tag:"DAILY LESSONS",title:"5 focused lectures a day.",desc:"Each lecture is short, specific, and crafted for how students actually learn. No fluff, no filler.",cta:"Explore lessons →"},
-              {tag:"AI PROFESSOR",title:"Ask. Get real answers.",desc:"Professor Max knows your topic deeply and explains concepts like a brilliant friend, not a textbook.",cta:"Meet Max →"},
-            ].map(f=>(
-              <div key={f.tag} style={{padding:"28px 24px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,transition:"all 0.2s",cursor:"default"}}
-                onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--border2)";e.currentTarget.style.background="var(--surface2)";}}
-                onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.background="var(--surface)";}}>
+            {[{tag:"STUDENTS",title:"Learn anything you want.",desc:"Chess, coding, design, music — type any goal and get a structured 6-month plan that actually works."},{tag:"DAILY LESSONS",title:"5 focused lectures a day.",desc:"Each lecture is short, specific, and crafted for how students actually learn. No fluff, no filler."},{tag:"AI PROFESSOR",title:"Ask. Get real answers.",desc:"Professor Max knows your topic deeply and explains concepts like a brilliant friend, not a textbook."}].map(f=>(
+              <div key={f.tag} style={{padding:"28px 24px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,transition:"all 0.2s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--border2)";e.currentTarget.style.background="var(--surface2)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.background="var(--surface)";}}>
                 <p style={{fontFamily:"var(--font-mono)",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",color:"var(--muted)",marginBottom:14}}>{f.tag}</p>
                 <h3 style={{fontFamily:"var(--font-display)",fontSize:"clamp(18px,2vw,24px)",fontWeight:500,color:"var(--ink)",marginBottom:10,lineHeight:1.3}}>{f.title}</h3>
-                <p style={{fontSize:13,color:"var(--muted)",lineHeight:1.7,marginBottom:16}}>{f.desc}</p>
-                <span style={{fontSize:12,color:"var(--accent3)",fontFamily:"var(--font-mono)",cursor:"pointer"}}>{f.cta}</span>
+                <p style={{fontSize:13,color:"var(--muted)",lineHeight:1.7}}>{f.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── Testimonials ── */}
       <section style={{padding:"80px 0",background:"var(--bg2)",borderTop:"1px solid var(--border)",borderBottom:"1px solid var(--border)"}}>
         <div className="container">
           <div style={{textAlign:"center",marginBottom:40}}>
@@ -627,11 +526,7 @@ function Landing({ onStart, onDemo }) {
             <h2 style={{fontFamily:"var(--font-display)",fontSize:"clamp(28px,3.5vw,44px)",fontWeight:300,fontStyle:"italic",color:"var(--ink)"}}>Student stories.</h2>
           </div>
           <div className="testimonials-grid" style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16}}>
-            {[
-              {q:"Velorn is the only app where I actually knew what to do next every single day.",name:"Riya, 16",tag:"Web Dev"},
-              {q:"Professor Max explained recursion better in 2 minutes than my teacher did in 2 weeks.",name:"Arjun, 17",tag:"Programming"},
-              {q:"I went from zero chess to beating my dad in 3 months. The roadmap actually works.",name:"Sana, 15",tag:"Chess"},
-            ].map(t=>(
+            {[{q:"Velorn is the only app where I actually knew what to do next every single day.",name:"Riya, 16",tag:"Web Dev"},{q:"Professor Max explained recursion better in 2 minutes than my teacher did in 2 weeks.",name:"Arjun, 17",tag:"Programming"},{q:"I went from zero chess to beating my dad in 3 months. The roadmap actually works.",name:"Sana, 15",tag:"Chess"}].map(t=>(
               <div key={t.name} style={{padding:"22px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10}}>
                 <p style={{fontFamily:"var(--font-display)",fontSize:"clamp(15px,1.8vw,18px)",fontStyle:"italic",fontWeight:300,color:"var(--ink2)",lineHeight:1.7,marginBottom:16}}>"{t.q}"</p>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -644,11 +539,8 @@ function Landing({ onStart, onDemo }) {
         </div>
       </section>
 
-      {/* ── Final CTA ── */}
       <section style={{padding:"100px 24px",textAlign:"center"}}>
-        <h2 style={{fontFamily:"var(--font-display)",fontSize:"clamp(36px,5vw,64px)",fontWeight:300,marginBottom:16,letterSpacing:"-0.01em",color:"var(--ink)"}}>
-          Ready to start<br/><em style={{fontStyle:"italic",fontWeight:600,color:"var(--accent3)"}}>learning?</em>
-        </h2>
+        <h2 style={{fontFamily:"var(--font-display)",fontSize:"clamp(36px,5vw,64px)",fontWeight:300,marginBottom:16,color:"var(--ink)"}}>Ready to start<br/><em style={{fontStyle:"italic",fontWeight:600,color:"var(--accent3)"}}>learning?</em></h2>
         <p style={{fontSize:14,color:"var(--muted)",marginBottom:36,fontFamily:"var(--font-mono)"}}>Build real skills. One day at a time.</p>
         <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
           <button className="btn btn-primary btn-lg" onClick={onStart}>Build My Roadmap →</button>
@@ -659,6 +551,7 @@ function Landing({ onStart, onDemo }) {
   );
 }
 
+// ── Auth ───────────────────────────────────────────────────────────────────
 function Auth({ onAuth }) {
   const [mode,setMode]=useState("signup");
   const [form,setForm]=useState({name:"",age:"",grade:"",email:"",password:""});
@@ -795,7 +688,6 @@ function Dashboard({ user, roadmap, progress, onUpdateProgress, onNav, isDemo })
         <p style={{fontSize:11,color:"var(--muted)",marginBottom:4,fontFamily:"var(--font-mono)",textTransform:"uppercase",letterSpacing:"0.1em"}}>{roadmap.title}</p>
         <h2 style={{fontFamily:"var(--font-display)",fontSize:32,fontWeight:400}}>Dashboard</h2>
       </div>
-
       <div className="stats-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:20}}>
         {[{label:"Month",value:`${currentMonth}`,sub:"of 6"},{label:"Week",value:`${currentWeek}`,sub:"of 4"},{label:"Streak",value:`${streak}`,sub:"days"},{label:"Complete",value:`${pct}%`,sub:`${completedDays.length}/${totalDays}`}].map(s=>(
           <div key={s.label} className="card stat-card" style={{position:"relative",overflow:"hidden"}}>
@@ -806,7 +698,6 @@ function Dashboard({ user, roadmap, progress, onUpdateProgress, onNav, isDemo })
           </div>
         ))}
       </div>
-
       <div className="card card-p" style={{marginBottom:12}}>
         <div className="row gap-8" style={{justifyContent:"space-between",marginBottom:10}}>
           <span style={{fontSize:13,fontWeight:500}}>Overall Progress</span>
@@ -814,7 +705,6 @@ function Dashboard({ user, roadmap, progress, onUpdateProgress, onNav, isDemo })
         </div>
         <div className="progress-track" style={{height:3}}><div className="progress-fill progress-fill-gold" style={{width:`${pct}%`}}/></div>
       </div>
-
       <div className="card card-p" style={{marginBottom:12,borderLeft:"2px solid var(--accent2)"}}>
         <div style={{marginBottom:10}}><span className="badge badge-neutral">Day {currentDay} · Today</span></div>
         <p style={{fontSize:14,lineHeight:1.7,color:"var(--ink2)",marginBottom:18}}>{todayTask}</p>
@@ -823,7 +713,6 @@ function Dashboard({ user, roadmap, progress, onUpdateProgress, onNav, isDemo })
           <button className="btn btn-secondary" onClick={markDone}>Mark Done</button>
         </div>
       </div>
-
       {week&&(
         <div className="card card-p">
           <p style={{fontSize:10,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--muted)",marginBottom:8,fontFamily:"var(--font-mono)"}}>Week {currentWeek} Goal</p>
@@ -874,7 +763,7 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
     const lc=roadmap.title.toLowerCase();
     if(lc.includes("entrepreneur"))return{title:"Build Your Business Concept",description:"Apply today's lectures by designing a mini business concept.",steps:[{id:"problem",label:"The Problem",prompt:"Describe a real problem you've noticed.",placeholder:"e.g. Students have no affordable printing after 8pm..."},{id:"solution",label:"Your Solution",prompt:"What product or service solves this?",placeholder:"e.g. A 24/7 self-service print kiosk..."},{id:"customer",label:"Target Customer",prompt:"Describe your ideal customer.",placeholder:"e.g. Students aged 14-22..."},{id:"money",label:"Revenue Model",prompt:"How does the business make money?",placeholder:"e.g. ₹5 per page..."},{id:"edge",label:"Competitive Advantage",prompt:"What makes you better?",placeholder:"e.g. No competitor offers 24/7..."}]};
     if(lc.includes("cod")||lc.includes("program"))return{title:"Design a Mini Project",description:"Plan a small but complete software project.",steps:[{id:"idea",label:"Project Idea",prompt:"What will you build?",placeholder:"e.g. A habit tracker..."},{id:"features",label:"Core Features",prompt:"List 3-5 essential features.",placeholder:"e.g. Track habits, streak counter..."},{id:"tech",label:"Tech Stack",prompt:"What technologies?",placeholder:"e.g. React, Supabase..."},{id:"data",label:"Data Model",prompt:"What data does your app store?",placeholder:"e.g. User, Habit, Entry..."},{id:"challenge",label:"Biggest Challenge",prompt:"What will be hardest?",placeholder:"e.g. Push notifications..."}]};
-    return{title:`Apply ${roadmap.title} Knowledge`,description:"Reflect on and apply what you learned today.",steps:[{id:"learning",label:"Key Learnings",prompt:"What are the 3 most important things?",placeholder:"Write here..."},{id:"apply",label:"Application",prompt:`Where would you use ${weekTopic}?`,placeholder:"Write here..."},{id:"project",label:"Project Idea",prompt:`Design a small project.`,placeholder:"Write here..."},{id:"challenge",label:"Challenge",prompt:"What was hardest?",placeholder:"Write here..."},{id:"next",label:"Next Steps",prompt:"What will you explore next?",placeholder:"Write here..."}]};
+    return{title:`Apply ${roadmap.title} Knowledge`,description:"Reflect on and apply what you learned today.",steps:[{id:"learning",label:"Key Learnings",prompt:"What are the 3 most important things?",placeholder:"Write here..."},{id:"apply",label:"Application",prompt:`Where would you use ${weekTopic}?`,placeholder:"Write here..."},{id:"project",label:"Project Idea",prompt:"Design a small project.",placeholder:"Write here..."},{id:"challenge",label:"Challenge",prompt:"What was hardest?",placeholder:"Write here..."},{id:"next",label:"Next Steps",prompt:"What will you explore next?",placeholder:"Write here..."}]};
   };
 
   const submitTask=async()=>{
@@ -907,7 +796,6 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
         <h2 style={{fontFamily:"var(--font-display)",fontSize:22,fontWeight:400,marginBottom:2}}>{weekTopic}</h2>
         <p style={{fontSize:11,color:"var(--muted)",fontFamily:"var(--font-mono)"}}>5 lectures · read at your own pace</p>
       </div>
-
       {lectures && (
         <div className="learn-layout" style={{display:"flex",gap:16,flexWrap:"wrap"}}>
           <div className="learn-sidebar" style={{width:220,flexShrink:0}}>
@@ -916,7 +804,6 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
               <div className="stack gap-1">{lectures.map((l,i)=>(<button key={i} className={`lec-list-item ${i===active?"active":""}`} onClick={()=>setActive(i)}><span className="lec-num">{i+1}</span><span style={{lineHeight:1.4}}>{l.title}</span></button>))}</div>
             </div>
           </div>
-
           <div style={{flex:1,minWidth:0}}>
             <div className="card card-p-lg" style={{marginBottom:14}}>
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20,paddingBottom:16,borderBottom:"1px solid var(--border)"}}>
@@ -929,47 +816,17 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
                 {lectures[active].action&&(<div className="lec-block lec-block-green"><div className="lec-block-label lec-block-label-green">Action Item</div><p className="lec-text">{lectures[active].action}</p></div>)}
                 {lectures[active].mistake&&(<div className="lec-block lec-block-red"><div className="lec-block-label lec-block-label-red">Common Mistake</div><p className="lec-text">{lectures[active].mistake}</p></div>)}
               </div>
-              {getTakeaway(lectures[active]) && (
-  <div style={{
-    background: "rgba(212,168,83,0.06)",
-    border: "1px solid var(--gold-border)",
-    borderRadius: "var(--r)",           // ← Fixed: added quotes
-    padding: "12px 16px",
-    marginBottom: 18
-  }}>
-    <p style={{
-      fontSize: 10,
-      fontWeight: 500,
-      textTransform: "uppercase",
-      letterSpacing: "0.1em",
-      color: "var(--gold)",
-      marginBottom: 5,
-      fontFamily: "var(--font-mono)"
-    }}>
-      Key Takeaway
-    </p>
-    <p style={{
-      fontSize: 14,
-      fontWeight: 500,
-      color: "var(--ink)",
-      lineHeight: 1.6
-    }}>
-      {getTakeaway(lectures[active])}
-    </p>
-  </div>
-)}
+              {getTakeaway(lectures[active])&&(<div style={{background:"rgba(212,168,83,0.06)",border:"1px solid var(--gold-border)",borderRadius:8,padding:"12px 16px",marginBottom:18}}><p style={{fontSize:10,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--gold)",marginBottom:5,fontFamily:"var(--font-mono)"}}>Key Takeaway</p><p style={{fontSize:14,fontWeight:500,color:"var(--ink)",lineHeight:1.6}}>{getTakeaway(lectures[active])}</p></div>)}
               {lectures[active].homework&&(<div style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:8,padding:"14px 16px",marginBottom:18}}><p style={{fontSize:10,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--muted)",marginBottom:10,fontFamily:"var(--font-mono)"}}>Homework</p>{lectures[active].homework.map((t,i)=>(<div key={i} style={{display:"flex",gap:8,alignItems:"flex-start",marginBottom:i<lectures[active].homework.length-1?8:0}}><div style={{width:18,height:18,borderRadius:4,background:"var(--accent2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:600,color:"#fff",flexShrink:0,fontFamily:"var(--font-mono)"}}>{i+1}</div><p style={{fontSize:13,lineHeight:1.6,color:"var(--ink2)"}}>{t}</p></div>))}</div>)}
               <div style={{display:"flex",gap:8,justifyContent:"space-between",flexWrap:"wrap"}}>
                 <button className="btn btn-secondary row gap-6" onClick={()=>setActive(a=>Math.max(0,a-1))} disabled={active===0}><Icon.ChevronLeft/> Prev</button>
                 {active<lectures.length-1?<button className="btn btn-primary row gap-6" onClick={()=>setActive(a=>a+1)}>Next <Icon.ChevronRight/></button>:<button className="btn btn-gold row gap-6" onClick={()=>{markDone();setShowTask(true);window.scrollTo({top:document.body.scrollHeight,behavior:"smooth"});}} disabled={dayDone}>{dayDone?"Done ✓":"Complete & Task"}</button>}
               </div>
             </div>
-
             <div style={{marginBottom:20}}>
               <div className="row gap-8" style={{justifyContent:"space-between",marginBottom:5,fontSize:11,color:"var(--muted)",fontFamily:"var(--font-mono)"}}><span>Progress</span><span>{active+1}/{lectures.length}</span></div>
               <div className="progress-track" style={{height:2}}><div className="progress-fill" style={{width:`${((active+1)/lectures.length)*100}%`}}/></div>
             </div>
-
             <div className="card card-p">
               <div className="row gap-7" style={{marginBottom:4}}><Icon.MessageCircle/><h3 style={{fontFamily:"var(--font-display)",fontSize:18,fontWeight:400}}>Ask Professor Max</h3></div>
               <p style={{fontSize:12,color:"var(--muted)",marginBottom:12}}>Ask anything about today's topic.</p>
@@ -980,7 +837,6 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
           </div>
         </div>
       )}
-
       {showTask&&lectures&&(()=>{
         const task=getWeeklyTask();const allDone=task.steps.every(s=>taskSteps[s.id]?.trim().length>10);
         const colors=["var(--accent2)","#c084fc","var(--emerald)","var(--gold)","var(--ember)"];
@@ -1007,22 +863,7 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
                   <button className="btn btn-secondary btn-sm row gap-6" onClick={submitTaskDoubt} disabled={loadingTaskDoubt||!taskDoubt.trim()}>{loadingTaskDoubt?<><Icon.Loader/>Thinking…</>:"Get a Hint"}</button>
                   {taskDoubtAnswer&&<div className="answer-box">{taskDoubtAnswer}</div>}
                 </div>
-                <button 
-  className="btn row gap-8" 
-  style={{
-    justifyContent: "center",
-    padding: "11px 20px",
-    background: allDone ? "var(--ink)" : "var(--surface2)",
-    color: allDone ? "var(--bg)" : "var(--muted)",
-    border: `1px solid ${allDone ? "var(--ink)" : "var(--border)"}`,
-    borderRadius: "var(--r)",           // ← Fixed: added quotes
-    cursor: allDone ? "pointer" : "not-allowed"
-  }}
-  onClick={submitTask} 
-  disabled={loadingFeedback || !allDone}
->
-  {loadingFeedback ? <><Icon.Loader/>Reviewing…</> : "Submit for Feedback"}
-</button>
+                <button className="btn row gap-8" style={{justifyContent:"center",padding:"11px 20px",background:allDone?"var(--ink)":"var(--surface2)",color:allDone?"var(--bg)":"var(--muted)",border:`1px solid ${allDone?"var(--ink)":"var(--border)"}`,borderRadius:8,cursor:allDone?"pointer":"not-allowed"}} onClick={submitTask} disabled={loadingFeedback||!allDone}>{loadingFeedback?<><Icon.Loader/>Reviewing…</>:"Submit for Feedback"}</button>
                 {!allDone&&<p style={{textAlign:"center",fontSize:12,color:"var(--muted)",fontFamily:"var(--font-mono)"}}>Complete all {task.steps.length} fields to submit.</p>}
               </div>
             ):(
@@ -1044,22 +885,17 @@ function WeeklyTest({ progress, roadmap }) {
   const{currentWeek=1,currentMonth=1}=progress;
   const month=roadmap.months[currentMonth-1];const week=month?.weeks[currentWeek-1];const topic=week?.testTopic??week?.goal??"Core Concepts";
   const[questions,setQuestions]=useState(null);const[loading,setLoading]=useState(false);const[answers,setAnswers]=useState({});const[submitted,setSubmitted]=useState(false);const[score,setScore]=useState(0);const[currentQ,setCurrentQ]=useState(0);
-
   const loadTest=async()=>{
     setLoading(true);setSubmitted(false);setAnswers({});setCurrentQ(0);let allQ=[];
-    try{
-      const raw=await askClaude([{role:"user",content:`Create 25 multiple choice questions for a student learning about "${topic}".\nRules: Questions must be specific to "${topic}". 4 options A,B,C,D. Mix difficulty.\nReturn ONLY JSON:\n{"questions":[{"q":"Question?","options":["A) answer","B) answer","C) answer","D) answer"],"answer":"A","explanation":"Why"}]}`}]);
-      let c=raw.trim().replace(/```json|```/gi,"").replace(/,(\s*[}\]])/g,"$1");
-      const m=c.match(/\{[\s\S]*\}/);if(m){const d=JSON.parse(m[0]);if(d.questions?.length>0)allQ=d.questions.slice(0,25);}
+    try{const raw=await askClaude([{role:"user",content:`Create 25 multiple choice questions for a student learning about "${topic}".\nReturn ONLY JSON:\n{"questions":[{"q":"Question?","options":["A) answer","B) answer","C) answer","D) answer"],"answer":"A","explanation":"Why"}]}`}]);
+      let c=raw.trim().replace(/```json|```/gi,"").replace(/,(\s*[}\]])/g,"$1");const m=c.match(/\{[\s\S]*\}/);if(m){const d=JSON.parse(m[0]);if(d.questions?.length>0)allQ=d.questions.slice(0,25);}
     }catch(e){}
     if(allQ.length===0)allQ=Array.from({length:25},(_,i)=>({q:`Question ${i+1}: What is an important concept in ${topic}?`,options:["A) Option A","B) Option B","C) Option C","D) Option D"],answer:"A",explanation:`This is a key concept in ${topic}.`}));
     setQuestions(allQ);setLoading(false);
   };
-
   const submit=()=>{let s=0;questions.forEach((q,i)=>{if(answers[i]===q.answer)s++;});setScore(s);setSubmitted(true);setCurrentQ(0);};
   const pct=questions?Math.round((Object.keys(answers).length/questions.length)*100):0;
   const scorePct=submitted?Math.round(score/questions.length*100):0;
-
   return (
     <div className="page container" style={{paddingTop:84,paddingBottom:64}}>
       <div className="card card-p" style={{marginBottom:20,borderLeft:"2px solid var(--accent2)"}}>
@@ -1067,18 +903,8 @@ function WeeklyTest({ progress, roadmap }) {
         <h2 style={{fontFamily:"var(--font-display)",fontSize:22,fontWeight:400,marginBottom:2}}>Weekly Assessment</h2>
         <p style={{fontSize:11,color:"var(--muted)",fontFamily:"var(--font-mono)"}}>{topic}</p>
       </div>
-
-      {!questions&&!loading&&(
-        <div style={{textAlign:"center",padding:"60px 20px"}}>
-          <div style={{width:60,height:60,borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",color:"var(--accent2)"}}><Icon.CheckSquare/></div>
-          <h3 style={{fontFamily:"var(--font-display)",fontSize:26,fontWeight:400,marginBottom:8}}>Ready to test your knowledge?</h3>
-          <p style={{color:"var(--muted)",marginBottom:28,fontSize:13,fontFamily:"var(--font-mono)"}}>25 questions on {topic}. No time limit.</p>
-          <button className="btn btn-primary btn-lg" style={{margin:"0 auto"}} onClick={loadTest}>Start Assessment →</button>
-        </div>
-      )}
-
+      {!questions&&!loading&&(<div style={{textAlign:"center",padding:"60px 20px"}}><div style={{width:60,height:60,borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",color:"var(--accent2)"}}><Icon.CheckSquare/></div><h3 style={{fontFamily:"var(--font-display)",fontSize:26,fontWeight:400,marginBottom:8}}>Ready to test your knowledge?</h3><p style={{color:"var(--muted)",marginBottom:28,fontSize:13,fontFamily:"var(--font-mono)"}}>25 questions on {topic}. No time limit.</p><button className="btn btn-primary btn-lg" style={{margin:"0 auto"}} onClick={loadTest}>Start Assessment →</button></div>)}
       {loading&&(<div style={{textAlign:"center",padding:"60px 20px"}}><div style={{width:36,height:36,border:"1px solid var(--border2)",borderTop:"1px solid var(--accent2)",borderRadius:"50%",animation:"spin 0.8s linear infinite",margin:"0 auto 14px"}}/><p style={{fontSize:12,color:"var(--muted)",fontFamily:"var(--font-mono)"}}>Generating questions…</p></div>)}
-
       {questions&&!submitted&&(
         <div>
           <div className="card card-p" style={{marginBottom:14}}>
@@ -1098,7 +924,6 @@ function WeeklyTest({ progress, roadmap }) {
           {Object.keys(answers).length<questions.length&&currentQ===questions.length-1&&(<p style={{color:"var(--ember)",fontSize:12,marginTop:8,fontFamily:"var(--font-mono)"}}>Answer {questions.length-Object.keys(answers).length} more questions first.</p>)}
         </div>
       )}
-
       {submitted&&(
         <div>
           <div className="card card-p-lg" style={{textAlign:"center",marginBottom:20,background:scorePct>=80?"rgba(74,222,128,0.04)":scorePct>=60?"rgba(212,168,83,0.04)":"rgba(248,113,113,0.04)",border:`1px solid ${scorePct>=80?"rgba(74,222,128,0.15)":scorePct>=60?"rgba(212,168,83,0.15)":"rgba(248,113,113,0.15)"}`}}>
@@ -1115,9 +940,10 @@ function WeeklyTest({ progress, roadmap }) {
   );
 }
 
+// ── App ────────────────────────────────────────────────────────────────────
 export default function App() {
   const[page,setPage]=useState("loading");const[user,setUser]=useState(null);const[profile,setProfile]=useState(null);const[roadmap,setRoadmap]=useState(null);const[progress,setProgress]=useState(null);const[isDemo,setIsDemo]=useState(false);
-  const[showEmailSettings,setShowEmailSettings]=useState(false);const[emailConfigured,setEmailConfigured]=useState(()=>{try{return!!(localStorage.getItem("ejs_service")&&localStorage.getItem("ejs_key"));}catch{return false;}});const[streakAlert,setStreakAlert]=useState(null);
+  const[showEmailSettings,setShowEmailSettings]=useState(false);const[streakAlert,setStreakAlert]=useState(null);
 
   useEffect(()=>{if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));},[]);
 
@@ -1129,12 +955,48 @@ export default function App() {
   },[]);
 
   const loadUserData=async(authUser)=>{
-    setUser(authUser);const prof=await getProfile(authUser.id);setProfile(prof);const rm=await getRoadmap(authUser.id);const pg=await getProgress(authUser.id);
+    setUser(authUser);
+    const prof=await getProfile(authUser.id);setProfile(prof);
+    const rm=await getRoadmap(authUser.id);
+    const pg=await getProgress(authUser.id);
+
     if(rm?.data){
-      setRoadmap(rm.data);const ap=dbToProgress(pg);setProgress(ap);
-      const today=new Date().toISOString().slice(0,10);const lv=pg?.last_visit;
-      if(lv&&lv!==today){const yesterday=new Date(Date.now()-86400000).toISOString().slice(0,10);if(lv!==yesterday){setStreakAlert("lost");const rp={...ap,streak:0};setProgress(rp);await upsertProgress(authUser.id,{...progressToDb(rp),streak:0});sendStreakLostEmail(prof?.full_name||authUser.user_metadata?.full_name||"Student",authUser.email,ap.streak);}}
-      await upsertProgress(authUser.id,{last_visit:today});setPage("dashboard");
+      setRoadmap(rm.data);
+      const ap=dbToProgress(pg);setProgress(ap);
+      const today=new Date().toISOString().slice(0,10);
+      const lv=pg?.last_visit;
+
+      if(lv&&lv!==today){
+        const yesterday=new Date(Date.now()-86400000).toISOString().slice(0,10);
+        const msAway=Date.now()-new Date(lv).getTime();
+        const daysAway=Math.floor(msAway/(1000*60*60*24));
+        const userName=prof?.full_name||authUser.user_metadata?.full_name||"Student";
+        const userEmail=authUser.email;
+
+        // Streak lost
+        if(lv!==yesterday){
+          setStreakAlert("lost");
+          const rp={...ap,streak:0};setProgress(rp);
+          await upsertProgress(authUser.id,{...progressToDb(rp),streak:0});
+        }
+
+        // 3-day inactivity check-in
+        const prefs=getEmailPrefs();
+        if(daysAway>=3&&prefs.checkin){
+          const nextTopic=rm.data?.months?.[ap.currentMonth-1]?.weeks?.[ap.currentWeek-1]?.goal||"your next lesson";
+          sendCheckinEmail(userName,userEmail,nextTopic,daysAway);
+        }
+
+        // Weekly progress email — send on Monday (day 1) if pref enabled
+        const dayOfWeek=new Date().getDay();
+        if(dayOfWeek===1&&prefs.weekly){
+          const nextTopic=rm.data?.months?.[ap.currentMonth-1]?.weeks?.[ap.currentWeek-1]?.goal||"your next lesson";
+          sendWeeklyProgressEmail(userName,userEmail,rm.data.title,ap.currentDay,nextTopic,ap.streak);
+        }
+      }
+
+      await upsertProgress(authUser.id,{last_visit:today});
+      setPage("dashboard");
     }else{
       if(!prof&&authUser.user_metadata?.full_name){await upsertProfile(authUser.id,{full_name:authUser.user_metadata.full_name,age:null,grade:null});setProfile({full_name:authUser.user_metadata.full_name});}
       setPage("onboard");
@@ -1147,12 +1009,11 @@ export default function App() {
   const exitDemo=()=>{setIsDemo(false);setRoadmap(null);setProgress(null);setUser(null);setPage("landing");};
   const showNav=page!=="loading";
   const navUser=isDemo?{email:"demo@velorn.app"}:user;
-  const demoOffset = isDemo ? 36 : 0;
 
   if(page==="loading")return(
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",flexDirection:"column",gap:10,background:"#0e0c0a"}}>
       <div style={{width:32,height:32,border:"1px solid rgba(255,255,255,0.08)",borderTop:"1px solid #a78bfa",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
-      <p style={{fontSize:11,color:"#5a5248",fontFamily:"'DM Mono', monospace",letterSpacing:"0.1em",textTransform:"uppercase"}}>Velorn</p>
+      <p style={{fontSize:11,color:"#5a5248",fontFamily:"'DM Mono',monospace",letterSpacing:"0.1em",textTransform:"uppercase"}}>Velorn</p>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
@@ -1168,7 +1029,7 @@ export default function App() {
         </div>
       )}
 
-      {showNav&&<Nav user={navUser} onLogout={isDemo?exitDemo:logout} onNav={p=>{if(p==="auth")setPage("auth");else setPage(p);}} page={page} onOpenEmailSettings={()=>setShowEmailSettings(true)} emailConfigured={emailConfigured} isDemo={isDemo} onSignUp={()=>{exitDemo();setPage("auth");}}/>}
+      {showNav&&<Nav user={navUser} onLogout={isDemo?exitDemo:logout} onNav={p=>{if(p==="auth")setPage("auth");else setPage(p);}} page={page} onOpenEmailSettings={()=>setShowEmailSettings(true)} isDemo={isDemo} onSignUp={()=>{exitDemo();setPage("auth");}}/>}
 
       {isDemo&&(
         <div className="demo-banner">
@@ -1178,7 +1039,15 @@ export default function App() {
         </div>
       )}
 
-      {showEmailSettings&&!isDemo&&<EmailSettingsModal onClose={()=>{setShowEmailSettings(false);try{setEmailConfigured(!!(localStorage.getItem("ejs_service")&&localStorage.getItem("ejs_key")));}catch{}}}/>}
+      {showEmailSettings&&!isDemo&&(
+        <EmailSettingsModal
+          onClose={()=>setShowEmailSettings(false)}
+          userEmail={user?.email}
+          userName={profile?.full_name||user?.user_metadata?.full_name||"Student"}
+          roadmap={roadmap}
+          progress={progress}
+        />
+      )}
 
       {page==="landing"&&<Landing onStart={()=>setPage("auth")} onDemo={startDemo}/>}
       {page==="auth"&&<Auth onAuth={onAuth}/>}
