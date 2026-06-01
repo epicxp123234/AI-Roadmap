@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL  = "https://knqclhfxhkishaivowhe.supabase.co";
@@ -7,11 +7,10 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: "velorn-auth" }
 });
 
-// ── EmailJS Config (hardcoded — users just toggle on/off) ──────────────────
 const EMAILJS_SERVICE  = "service_az5xx88";
 const EMAILJS_KEY      = "_22wrLmwQJNVFd-pa";
-const EMAILJS_WEEKLY   = "template_zheyc9c";   // Weekly progress
-const EMAILJS_CHECKIN  = "template_yr13akv";   // 3-day inactivity
+const EMAILJS_WEEKLY   = "template_zheyc9c";
+const EMAILJS_CHECKIN  = "template_yr13akv";
 
 async function loadEmailJS() {
   if (window.emailjs) return true;
@@ -55,20 +54,6 @@ async function sendCheckinEmail(userName, userEmail, nextTopic, daysAway) {
   } catch(e) { console.error("Check-in email error:", e); return false; }
 }
 
-async function sendStreakLostEmail(userName, userEmail, streak) {
-  try {
-    await loadEmailJS();
-    await window.emailjs.send(EMAILJS_SERVICE, EMAILJS_CHECKIN, {
-      to_name: userName, to_email: userEmail,
-      next_topic: "your next lesson",
-      days_away: "a few",
-      app_url: "https://velorn.vercel.app"
-    });
-    return true;
-  } catch(e) { return false; }
-}
-
-// ── Email prefs stored in localStorage ────────────────────────────────────
 function getEmailPrefs() {
   try {
     return {
@@ -81,7 +66,6 @@ function setEmailPref(key, val) {
   try { localStorage.setItem(`velorn_${key}_email`, val ? "true" : "false"); } catch {}
 }
 
-// ── Supabase helpers ───────────────────────────────────────────────────────
 async function askClaude(messages) {
   const userMessage = messages.find(m => m.role === "user")?.content || "";
   try {
@@ -131,6 +115,11 @@ const Icon = {
   CheckSquare: ()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>,
   Loader: ()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{animation:"spin 1s linear infinite"}}><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>,
   Menu: ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
+  BookOpen: ()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>,
+  Star: ()=><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
+  Sparkles: ()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>,
+  Laugh: ()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 3 4 3 4-3 4-3"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>,
+  Child: ()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg>,
 };
 
 // ── 3D Brain SVG ───────────────────────────────────────────────────────────
@@ -191,6 +180,112 @@ const BrainCGI = () => (
   </svg>
 );
 
+// ── Professor Max mini avatar SVG ──────────────────────────────────────────
+const ProfessorAvatar = ({ size = 44, mood = "normal" }) => {
+  const eyeY = mood === "wink" ? 14 : 12;
+  return (
+    <svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg" width={size} height={size}>
+      <defs>
+        <radialGradient id="profGrad" cx="40%" cy="30%" r="60%">
+          <stop offset="0%" stopColor="#c4b5fd"/>
+          <stop offset="100%" stopColor="#6d28d9"/>
+        </radialGradient>
+      </defs>
+      {/* Head */}
+      <circle cx="30" cy="22" r="16" fill="url(#profGrad)" />
+      {/* Glasses */}
+      <rect x="16" y="18" width="10" height="7" rx="3" fill="none" stroke="#e9d5ff" strokeWidth="1.5" opacity="0.8"/>
+      <rect x="34" y="18" width="10" height="7" rx="3" fill="none" stroke="#e9d5ff" strokeWidth="1.5" opacity="0.8"/>
+      <line x1="26" y1="21" x2="34" y2="21" stroke="#e9d5ff" strokeWidth="1.5" opacity="0.8"/>
+      <line x1="13" y1="21" x2="16" y2="21" stroke="#e9d5ff" strokeWidth="1.5" opacity="0.8"/>
+      <line x1="44" y1="21" x2="47" y2="21" stroke="#e9d5ff" strokeWidth="1.5" opacity="0.8"/>
+      {/* Eyes */}
+      {mood === "wink" ? (
+        <>
+          <circle cx="21" cy="21" r="2" fill="#e9d5ff" opacity="0.9"/>
+          <path d="M33 21 Q36 19 39 21" stroke="#e9d5ff" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+        </>
+      ) : (
+        <>
+          <circle cx="21" cy="21" r="2" fill="#e9d5ff" opacity="0.9"/>
+          <circle cx="39" cy="21" r="2" fill="#e9d5ff" opacity="0.9"/>
+        </>
+      )}
+      {/* Smile */}
+      {mood === "laugh" ? (
+        <path d="M22 30 Q30 37 38 30" stroke="#e9d5ff" strokeWidth="1.8" fill="none" strokeLinecap="round"/>
+      ) : (
+        <path d="M23 29 Q30 34 37 29" stroke="#e9d5ff" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+      )}
+      {/* Body / gown */}
+      <path d="M14 42 Q14 36 22 35 L30 38 L38 35 Q46 36 46 42 L46 58 L14 58Z" fill="#4c1d95" opacity="0.9"/>
+      {/* Collar */}
+      <path d="M25 35 L30 42 L35 35" fill="#c4b5fd" opacity="0.6"/>
+      {/* Grad cap */}
+      <rect x="17" y="7" width="26" height="4" rx="1" fill="#1a1714"/>
+      <polygon points="30,2 44,9 30,12 16,9" fill="#2a2520"/>
+      <line x1="44" y1="9" x2="47" y2="16" stroke="#d4a853" strokeWidth="1.5"/>
+      <circle cx="47" cy="17" r="2" fill="#d4a853"/>
+    </svg>
+  );
+};
+
+// ── Child Bot SVG ──────────────────────────────────────────────────────────
+const ChildBotAvatar = ({ size = 44, mood = "curious" }) => (
+  <svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg" width={size} height={size}>
+    <defs>
+      <radialGradient id="childGrad" cx="40%" cy="30%" r="60%">
+        <stop offset="0%" stopColor="#fde68a"/>
+        <stop offset="100%" stopColor="#f59e0b"/>
+      </radialGradient>
+    </defs>
+    {/* Head */}
+    <circle cx="30" cy="22" r="16" fill="url(#childGrad)"/>
+    {/* Antenna */}
+    <line x1="30" y1="6" x2="30" y2="1" stroke="#f59e0b" strokeWidth="2"/>
+    <circle cx="30" cy="1" r="2.5" fill="#fbbf24">
+      <animate attributeName="r" values="2.5;3.5;2.5" dur="1.8s" repeatCount="indefinite"/>
+      <animate attributeName="fill" values="#fbbf24;#fde68a;#fbbf24" dur="1.8s" repeatCount="indefinite"/>
+    </circle>
+    {/* Eyes */}
+    {mood === "thinking" ? (
+      <>
+        <circle cx="23" cy="20" r="3.5" fill="#1a1714" opacity="0.9"/>
+        <circle cx="37" cy="20" r="3.5" fill="#1a1714" opacity="0.9"/>
+        <circle cx="24.2" cy="19" r="1" fill="white"/>
+        <circle cx="38.2" cy="19" r="1" fill="white"/>
+        {/* Eyebrow raised */}
+        <path d="M20 15 Q23 13 26 15" stroke="#d97706" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+      </>
+    ) : (
+      <>
+        <circle cx="23" cy="20" r="3.5" fill="#1a1714" opacity="0.9"/>
+        <circle cx="37" cy="20" r="3.5" fill="#1a1714" opacity="0.9"/>
+        <circle cx="24.2" cy="19" r="1" fill="white"/>
+        <circle cx="38.2" cy="19" r="1" fill="white"/>
+      </>
+    )}
+    {/* Mouth */}
+    {mood === "happy" ? (
+      <path d="M22 28 Q30 35 38 28" stroke="#92400e" strokeWidth="1.8" fill="none" strokeLinecap="round"/>
+    ) : mood === "thinking" ? (
+      <path d="M24 29 Q30 28 36 31" stroke="#92400e" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+    ) : (
+      <circle cx="30" cy="29" r="3" fill="#92400e" opacity="0.8"/>
+    )}
+    {/* Rosy cheeks */}
+    <circle cx="18" cy="26" r="4" fill="#fca5a5" opacity="0.4"/>
+    <circle cx="42" cy="26" r="4" fill="#fca5a5" opacity="0.4"/>
+    {/* Body */}
+    <path d="M16 43 Q16 37 24 36 L30 39 L36 36 Q44 37 44 43 L44 58 L16 58Z" fill="#fbbf24" opacity="0.8"/>
+    {/* Overalls bib */}
+    <path d="M24 36 L30 42 L36 36 Q36 44 30 44 Q24 44 24 36Z" fill="#d97706" opacity="0.7"/>
+    {/* Little star badge */}
+    <circle cx="22" cy="48" r="4" fill="#fde68a" opacity="0.9"/>
+    <text x="22" y="50.5" textAnchor="middle" fontSize="5" fill="#92400e">★</text>
+  </svg>
+);
+
 // ── CSS ────────────────────────────────────────────────────────────────────
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,600&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=DM+Mono:wght@400;500&display=swap');
@@ -202,6 +297,7 @@ const css = `
     --accent:#8b5cf6;--accent2:#a78bfa;--accent3:#c4b5fd;
     --gold:#d4a853;--gold2:#e8c07a;--gold-light:rgba(212,168,83,0.10);--gold-border:rgba(212,168,83,0.30);
     --emerald:#4ade80;--ember:#f87171;--emerald-light:rgba(74,222,128,0.10);--ember-light:rgba(248,113,113,0.10);--blue-light:rgba(139,92,246,0.10);
+    --child:#f59e0b;--child-light:rgba(245,158,11,0.12);--child-border:rgba(245,158,11,0.3);
     --r:8px;--font:'DM Sans',system-ui,sans-serif;--font-display:'Cormorant Garamond',Georgia,serif;--font-mono:'DM Mono',monospace;
   }
   html{scroll-behavior:smooth;}
@@ -214,6 +310,15 @@ const css = `
   @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-18px)}}
   @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
   @keyframes pulse{0%,100%{opacity:0.6}50%{opacity:1}}
+  @keyframes bounceIn{0%{opacity:0;transform:scale(0.3) translateY(40px)}60%{transform:scale(1.08) translateY(-8px)}80%{transform:scale(0.97) translateY(3px)}100%{opacity:1;transform:scale(1) translateY(0)}}
+  @keyframes slideUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes confettiFall{0%{transform:translateY(-10px) rotate(0deg);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}
+  @keyframes welcomePop{0%{opacity:0;transform:scale(0.7)}70%{transform:scale(1.04)}100%{opacity:1;transform:scale(1)}}
+  @keyframes ripple{0%{transform:scale(1);opacity:0.4}100%{transform:scale(2.2);opacity:0}}
+  @keyframes childTyping{0%,100%{opacity:0.4}50%{opacity:1}}
+  @keyframes popIn{0%{opacity:0;transform:scale(0.5) translateY(10px)}80%{transform:scale(1.05)}100%{opacity:1;transform:scale(1) translateY(0)}}
+  @keyframes jokePop{0%{opacity:0;transform:translateX(-16px) scale(0.92)}100%{opacity:1;transform:translateX(0) scale(1)}}
+  @keyframes waveHand{0%,100%{transform:rotate(0deg)}25%{transform:rotate(-20deg)}75%{transform:rotate(20deg)}}
   .page{animation:fadeUp 0.5s cubic-bezier(0.22,1,0.36,1) both;}
   .nav{position:fixed;top:0;left:0;right:0;z-index:200;height:60px;padding:0 40px;display:flex;align-items:center;justify-content:space-between;background:rgba(14,12,10,0.8);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);}
   .nav-logo{font-family:var(--font);font-weight:700;font-size:14px;color:var(--ink);letter-spacing:0.05em;text-transform:uppercase;display:flex;align-items:center;gap:8px;}
@@ -234,6 +339,8 @@ const css = `
   .btn-ghost:hover:not(:disabled){color:var(--ink2);background:var(--surface2);}
   .btn-gold{background:var(--gold);color:var(--bg);padding:10px 22px;font-weight:600;}
   .btn-gold:hover:not(:disabled){background:var(--gold2);transform:translateY(-1px);}
+  .btn-child{background:var(--child-light);color:var(--child);padding:10px 22px;font-weight:600;border:1px solid var(--child-border);}
+  .btn-child:hover:not(:disabled){background:rgba(245,158,11,0.18);transform:translateY(-1px);}
   .btn-lg{padding:13px 28px;font-size:14px;border-radius:10px;letter-spacing:0.03em;}
   .btn-sm{padding:6px 14px;font-size:12px;}
   .btn-icon{padding:7px;}
@@ -263,10 +370,12 @@ const css = `
   .badge-red{background:var(--ember-light);color:var(--ember);border:1px solid rgba(248,113,113,0.2);}
   .badge-blue{background:var(--blue-light);color:var(--accent2);border:1px solid rgba(139,92,246,0.2);}
   .badge-neutral{background:var(--surface2);color:var(--ink2);border:1px solid var(--border2);}
+  .badge-child{background:var(--child-light);color:var(--child);border:1px solid var(--child-border);}
   .progress-track{background:var(--surface2);border-radius:999px;overflow:hidden;}
   .progress-fill{height:100%;border-radius:999px;background:var(--accent2);transition:width 0.6s cubic-bezier(0.22,1,0.36,1);}
   .progress-fill-gold{background:var(--gold);}
   .progress-fill-green{background:var(--emerald);}
+  .progress-fill-child{background:var(--child);}
   .container{max-width:900px;margin:0 auto;padding:0 24px;}
   .container-wide{max-width:1200px;margin:0 auto;padding:0 40px;}
   .stack{display:flex;flex-direction:column;}
@@ -309,8 +418,6 @@ const css = `
   .mobile-nav.open{display:flex;}
   .mobile-nav-link{font-size:20px;font-weight:400;color:var(--ink2);background:none;border:none;cursor:pointer;padding:12px 24px;font-family:var(--font);transition:color 0.15s;}
   .mobile-nav-link:hover,.mobile-nav-link.active{color:var(--ink);}
-
-  /* Toggle switch */
   .toggle-row{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--border);}
   .toggle-row:last-child{border-bottom:none;}
   .toggle{position:relative;width:44px;height:24px;flex-shrink:0;}
@@ -319,6 +426,49 @@ const css = `
   .toggle-slider::before{content:"";position:absolute;height:18px;width:18px;left:2px;bottom:2px;background:var(--muted);border-radius:50%;transition:0.2s;}
   .toggle input:checked + .toggle-slider{background:var(--accent2);border-color:var(--accent2);}
   .toggle input:checked + .toggle-slider::before{transform:translateX(20px);background:#fff;}
+
+  /* ── Welcome Screen ── */
+  .welcome-overlay{position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;background:rgba(8,6,4,0.96);backdrop-filter:blur(16px);}
+  .welcome-card{background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:48px 40px;max-width:480px;width:90%;text-align:center;position:relative;overflow:hidden;animation:welcomePop 0.6s cubic-bezier(0.22,1,0.36,1) both;}
+  .welcome-card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%, rgba(139,92,246,0.15) 0%, transparent 70%);pointer-events:none;}
+  .welcome-rings{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;}
+  .welcome-ring{position:absolute;border-radius:50%;border:1px solid rgba(167,139,250,0.2);animation:ripple 3s ease-out infinite;}
+  .confetti-piece{position:fixed;width:8px;height:8px;border-radius:2px;animation:confettiFall linear forwards;pointer-events:none;z-index:9001;}
+  .welcome-avatar{animation:bounceIn 0.8s cubic-bezier(0.22,1,0.36,1) 0.2s both;}
+  .welcome-title{animation:slideUp 0.6s ease 0.4s both;opacity:0;}
+  .welcome-sub{animation:slideUp 0.6s ease 0.55s both;opacity:0;}
+  .welcome-btn{animation:slideUp 0.6s ease 0.7s both;opacity:0;}
+
+  /* ── Professor Joke Sidekick ── */
+  .prof-sidekick{position:relative;display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 8px;flex-shrink:0;}
+  .prof-joke-bubble{background:var(--surface2);border:1px solid var(--border2);border-radius:12px;border-bottom-left-radius:4px;padding:10px 13px;font-size:12px;color:var(--ink2);line-height:1.55;max-width:160px;animation:jokePop 0.4s cubic-bezier(0.22,1,0.36,1) both;position:relative;cursor:pointer;}
+  .prof-joke-bubble::after{content:'';position:absolute;bottom:-8px;left:16px;border:4px solid transparent;border-top-color:var(--border2);}
+  .prof-joke-inner::after{content:'';position:absolute;bottom:-7px;left:16px;border:4px solid transparent;border-top-color:var(--surface2);}
+  .joke-refresh{font-size:10px;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:3px;transition:color 0.15s;background:none;border:none;padding:2px 4px;font-family:var(--font-mono);}
+  .joke-refresh:hover{color:var(--accent2);}
+  .prof-figure-wrap{animation:float 4s ease-in-out infinite;}
+
+  /* ── Teach Me / Child Bot ── */
+  .teach-btn{display:flex;align-items:center;gap:8px;padding:12px 18px;background:var(--child-light);border:1px solid var(--child-border);border-radius:10px;cursor:pointer;transition:all 0.2s;color:var(--child);font-weight:600;font-size:13px;font-family:var(--font);width:100%;}
+  .teach-btn:hover{background:rgba(245,158,11,0.18);transform:translateY(-1px);box-shadow:0 4px 16px rgba(245,158,11,0.15);}
+  .teach-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:800;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(10px);}
+  .teach-modal{background:var(--surface);border:1px solid var(--border2);border-radius:16px;width:100%;max-width:580px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column;animation:welcomePop 0.4s cubic-bezier(0.22,1,0.36,1) both;}
+  .teach-modal-header{padding:20px 24px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-shrink:0;}
+  .teach-messages{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth;}
+  .teach-msg{display:flex;gap:10px;align-items:flex-end;}
+  .teach-msg.user{flex-direction:row-reverse;}
+  .teach-bubble{padding:11px 15px;border-radius:14px;font-size:13px;line-height:1.65;max-width:78%;word-wrap:break-word;}
+  .teach-bubble-child{background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.25);color:var(--ink2);border-bottom-left-radius:4px;}
+  .teach-bubble-user{background:var(--accent2);color:#fff;border-bottom-right-radius:4px;}
+  .teach-input-row{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;flex-shrink:0;}
+  .teach-input{flex:1;border:1px solid var(--border2);border-radius:8px;padding:10px 14px;font-size:13px;font-family:var(--font);background:var(--surface2);color:var(--ink);outline:none;resize:none;line-height:1.5;}
+  .teach-input:focus{border-color:var(--child-border);box-shadow:0 0 0 3px rgba(245,158,11,0.08);}
+  .teach-score{display:flex;align-items:center;gap:4px;padding:3px 8px;background:var(--child-light);border:1px solid var(--child-border);border-radius:999px;font-size:11px;font-weight:600;color:var(--child);font-family:var(--font-mono);}
+  .typing-dots{display:flex;gap:3px;padding:4px 0;}
+  .typing-dot{width:5px;height:5px;border-radius:50%;background:var(--child);animation:childTyping 1.2s ease-in-out infinite;}
+  .typing-dot:nth-child(2){animation-delay:0.2s;}
+  .typing-dot:nth-child(3){animation-delay:0.4s;}
+  .score-bar-wrap{padding:8px 20px;background:rgba(245,158,11,0.05);border-bottom:1px solid var(--child-border);display:flex;align-items:center;gap:10px;font-size:11px;color:var(--muted);font-family:var(--font-mono);}
 
   @media(max-width:768px){
     .nav{padding:0 20px;}
@@ -337,6 +487,9 @@ const css = `
     .notepad{padding:24px 20px!important;}
     .hero-section{padding:100px 0 60px!important;}
     .testimonials-grid{grid-template-columns:1fr!important;}
+    .prof-sidekick{display:none;}
+    .teach-modal{max-height:90vh;}
+    .welcome-card{padding:32px 24px;}
   }
   @media(max-width:480px){
     .stats-grid{grid-template-columns:repeat(2,1fr)!important;}
@@ -344,6 +497,304 @@ const css = `
     .nav-logo span{display:none;}
   }
 `;
+
+// ── Confetti helper ────────────────────────────────────────────────────────
+function Confetti() {
+  const pieces = Array.from({ length: 30 }, (_, i) => ({
+    id: i,
+    color: ["#a78bfa","#f59e0b","#4ade80","#f87171","#c4b5fd","#fde68a"][i % 6],
+    left: `${Math.random() * 100}%`,
+    delay: `${Math.random() * 1.5}s`,
+    duration: `${2 + Math.random() * 2}s`,
+    size: `${6 + Math.random() * 8}px`,
+    rotate: Math.random() > 0.5 ? "3px" : "50%",
+  }));
+  return (
+    <>
+      {pieces.map(p => (
+        <div key={p.id} className="confetti-piece" style={{
+          left: p.left, top: "-20px",
+          width: p.size, height: p.size,
+          background: p.color,
+          borderRadius: p.rotate,
+          animationDuration: p.duration,
+          animationDelay: p.delay,
+        }} />
+      ))}
+    </>
+  );
+}
+
+// ── Welcome Screen ─────────────────────────────────────────────────────────
+function WelcomeScreen({ name, onDone }) {
+  const [phase, setPhase] = useState(0); // 0=show, 1=fading
+  useEffect(() => {
+    const t = setTimeout(() => setPhase(1), 4200);
+    return () => clearTimeout(t);
+  }, []);
+  const firstName = name?.split(" ")[0] || "there";
+  return (
+    <div className="welcome-overlay" style={{ opacity: phase === 1 ? 0 : 1, transition: "opacity 0.6s ease", pointerEvents: phase === 1 ? "none" : "all" }}
+      onTransitionEnd={() => phase === 1 && onDone()}>
+      <Confetti />
+      <div className="welcome-card">
+        <div className="welcome-rings">
+          {[120,180,240].map((s, i) => (
+            <div key={i} className="welcome-ring" style={{ width: s, height: s, animationDelay: `${i * 0.8}s` }} />
+          ))}
+        </div>
+        <div className="welcome-avatar" style={{ marginBottom: 20, display: "flex", justifyContent: "center" }}>
+          <div style={{ position: "relative", display: "inline-block" }}>
+            <ProfessorAvatar size={80} mood="laugh" />
+            <div style={{ position: "absolute", top: -4, right: -4, animation: "waveHand 0.6s ease-in-out infinite", transformOrigin: "bottom center", fontSize: 22 }}>👋</div>
+          </div>
+        </div>
+        <h1 className="welcome-title" style={{ fontFamily: "var(--font-display)", fontSize: "clamp(28px,4vw,40px)", fontWeight: 300, marginBottom: 10, color: "var(--ink)" }}>
+          Welcome, <em style={{ fontStyle: "italic", fontWeight: 600, color: "var(--accent3)" }}>{firstName}!</em>
+        </h1>
+        <p className="welcome-sub" style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.7, marginBottom: 28, maxWidth: 340, margin: "0 auto 28px" }}>
+          Professor Max is ready to guide you. Your 6-month roadmap awaits — one day at a time.
+        </p>
+        <div className="welcome-btn">
+          <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", marginBottom: 16 }}>
+            {["Daily Lectures", "AI Professor", "Weekly Tests", "Teach Me!"].map((feat, i) => (
+              <span key={i} className="badge badge-blue" style={{ animation: `popIn 0.4s ease ${0.8 + i * 0.1}s both`, opacity: 0 }}>{feat}</span>
+            ))}
+          </div>
+          <button className="btn btn-primary btn-lg" style={{ margin: "0 auto" }} onClick={onDone}>
+            Let's start learning →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Professor Joke Sidekick ────────────────────────────────────────────────
+const PROF_JOKES = [
+  "Why do programmers prefer dark mode? Because light attracts bugs! 🐛",
+  "I told my students to think outside the box. Now they're learning in the hallway. 📦",
+  "A photon checks into a hotel. The bellhop asks 'Can I help with your luggage?' The photon replies: 'No thanks, I'm travelling light.' ✨",
+  "Why did the student eat his homework? Because the teacher told him it was a piece of cake! 🎂",
+  "What do you call a fish without eyes? A fsh. 🐟",
+  "I used to hate maths, but then I realized decimals have a point. 📐",
+  "Why can't you trust an atom? Because they make up everything! ⚛️",
+  "What's a teacher's favourite nation? Expla-nation! 🌍",
+  "I told a chemistry joke. No reaction. 🧪",
+  "Why did the math book look so sad? It had too many problems. 📚",
+];
+
+function ProfJokeSidekick({ topic }) {
+  const [jokeIdx, setJokeIdx] = useState(() => Math.floor(Math.random() * PROF_JOKES.length));
+  const [mood, setMood] = useState("normal");
+  const [key, setKey] = useState(0);
+
+  const nextJoke = () => {
+    setMood("wink");
+    setJokeIdx(i => (i + 1) % PROF_JOKES.length);
+    setKey(k => k + 1);
+    setTimeout(() => setMood("normal"), 1800);
+  };
+
+  return (
+    <div className="prof-sidekick">
+      <div key={key} className="prof-joke-bubble" onClick={nextJoke} title="Click for another joke!">
+        <div className="prof-joke-inner" />
+        <p style={{ fontSize: 11, color: "var(--muted)", fontFamily: "var(--font-mono)", marginBottom: 4 }}>Prof. Max says:</p>
+        <p style={{ fontSize: 12, color: "var(--ink2)", lineHeight: 1.55 }}>{PROF_JOKES[jokeIdx]}</p>
+      </div>
+      <button className="joke-refresh" onClick={nextJoke}>↻ next joke</button>
+      <div className="prof-figure-wrap">
+        <ProfessorAvatar size={52} mood={mood} />
+      </div>
+    </div>
+  );
+}
+
+// ── Teach Me! Child Bot Modal ──────────────────────────────────────────────
+function TeachMeModal({ onClose, lectureContext, user, isDemo }) {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [score, setScore] = useState(0);
+  const [childMood, setChildMood] = useState("curious");
+  const [sessionStarted, setSessionStarted] = useState(false);
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  useEffect(() => { scrollToBottom(); }, [messages]);
+
+  const startSession = () => {
+    setSessionStarted(true);
+    setMessages([{
+      role: "child",
+      text: `Hi! I'm Pip 👋 I heard you learned about "${lectureContext}" today. Can you teach me? I'm a curious kid who doesn't know anything yet! Start with the most basic thing — what even IS it? 🤔`,
+      mood: "curious"
+    }]);
+    setChildMood("curious");
+  };
+
+  const send = async () => {
+    if (!input.trim() || loading) return;
+    const userText = input.trim();
+    setInput("");
+    const newMessages = [...messages, { role: "user", text: userText }];
+    setMessages(newMessages);
+    setLoading(true);
+    setChildMood("thinking");
+
+    const history = newMessages.map(m => `${m.role === "user" ? "Student (teaching)" : "Pip (child)"}: ${m.text}`).join("\n");
+
+    const prompt = `You are Pip — a curious, friendly 7-year-old child who is being taught about "${lectureContext}" by a student.
+
+Your job is to:
+1. Ask follow-up questions like a genuinely curious child would ("But WHY?", "What does that mean?", "Can you give an example?", "I don't understand that word!")
+2. React with childlike wonder when things are well explained ("Ooooh that makes sense!", "Wow I never knew that!")
+3. Get confused about jargon and ask for simpler explanations
+4. Occasionally make cute wrong assumptions that the student has to correct
+5. Give a score OUT OF 10 based on how well the student explained it — simple clear explanations get high scores, jargon-filled ones get low scores
+
+After your child response, on a new line write exactly: SCORE:X (where X is 1-10)
+
+Keep your response SHORT (2-4 sentences max). Be playful and warm. Never sound like an AI or teacher.
+
+Conversation so far:
+${history}
+
+Respond as Pip now:`;
+
+    try {
+      const raw = await askClaude([{ role: "user", content: prompt }]);
+      const scoreMatch = raw.match(/SCORE:(\d+)/i);
+      const newScore = scoreMatch ? parseInt(scoreMatch[1]) : 5;
+      const childText = raw.replace(/SCORE:\d+/gi, "").trim();
+
+      // determine mood based on score
+      const newMood = newScore >= 8 ? "happy" : newScore >= 5 ? "thinking" : "curious";
+      setChildMood(newMood);
+      setScore(Math.min(10, Math.max(0, newScore)));
+
+      setMessages(prev => [...prev, { role: "child", text: childText, mood: newMood, score: newScore }]);
+    } catch {
+      setMessages(prev => [...prev, { role: "child", text: "Umm... I got a bit confused. Can you try explaining it again? 😅", mood: "thinking" }]);
+    }
+    setLoading(false);
+    setTimeout(() => inputRef.current?.focus(), 100);
+  };
+
+  const handleKey = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+  };
+
+  const scoreColor = score >= 8 ? "var(--emerald)" : score >= 5 ? "var(--gold)" : "var(--ember)";
+  const scorePct = (score / 10) * 100;
+
+  return (
+    <div className="teach-modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="teach-modal">
+        {/* Header */}
+        <div className="teach-modal-header">
+          <ChildBotAvatar size={44} mood={childMood} />
+          <div style={{ flex: 1 }}>
+            <div className="row gap-8">
+              <h3 style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 500, color: "var(--ink)" }}>Teach Me!</h3>
+              <span className="badge badge-child">Feynman Technique</span>
+            </div>
+            <p style={{ fontSize: 11, color: "var(--muted)", fontFamily: "var(--font-mono)" }}>Explain to Pip like they're 7 years old</p>
+          </div>
+          <button className="btn btn-ghost btn-icon" onClick={onClose}><Icon.X /></button>
+        </div>
+
+        {/* Score bar */}
+        {sessionStarted && (
+          <div className="score-bar-wrap">
+            <span>Pip's understanding:</span>
+            <div style={{ flex: 1, background: "var(--surface2)", borderRadius: 999, height: 6, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${scorePct}%`, background: scoreColor, borderRadius: 999, transition: "width 0.6s cubic-bezier(0.22,1,0.36,1)" }} />
+            </div>
+            <div className="teach-score"><Icon.Star />{score}/10</div>
+          </div>
+        )}
+
+        {/* Messages */}
+        <div className="teach-messages">
+          {!sessionStarted ? (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 20px", gap: 20, textAlign: "center" }}>
+              <div style={{ animation: "float 3s ease-in-out infinite" }}>
+                <ChildBotAvatar size={80} mood="curious" />
+              </div>
+              <div>
+                <h3 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 400, marginBottom: 8 }}>Meet Pip!</h3>
+                <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.7, maxWidth: 340, margin: "0 auto 20px" }}>
+                  Pip is a curious 7-year-old who wants to learn about <strong style={{ color: "var(--ink)" }}>"{lectureContext}"</strong> from you. Teach clearly and earn a perfect 10!
+                </p>
+                <p style={{ fontSize: 11, color: "var(--subtle)", fontFamily: "var(--font-mono)", marginBottom: 20 }}>The clearer your explanation, the higher Pip scores you.</p>
+                <button className="btn btn-child btn-lg" onClick={startSession}>
+                  <ChildBotAvatar size={18} mood="happy" />
+                  Start Teaching Pip →
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {messages.map((msg, i) => (
+                <div key={i} className={`teach-msg ${msg.role === "user" ? "user" : ""}`}>
+                  {msg.role === "child" && (
+                    <div style={{ flexShrink: 0, animation: i === messages.length - 1 ? "popIn 0.3s ease both" : "none" }}>
+                      <ChildBotAvatar size={32} mood={msg.mood || "curious"} />
+                    </div>
+                  )}
+                  <div className={`teach-bubble ${msg.role === "child" ? "teach-bubble-child" : "teach-bubble-user"}`}
+                    style={{ animation: i === messages.length - 1 ? "popIn 0.3s ease both" : "none" }}>
+                    {msg.text}
+                    {msg.role === "child" && msg.score !== undefined && (
+                      <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                        {Array.from({ length: 10 }, (_, j) => (
+                          <span key={j} style={{ fontSize: 8, color: j < msg.score ? "var(--gold)" : "var(--border2)" }}>★</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {loading && (
+                <div className="teach-msg">
+                  <ChildBotAvatar size={32} mood="thinking" />
+                  <div className="teach-bubble teach-bubble-child">
+                    <div className="typing-dots">
+                      <div className="typing-dot" /><div className="typing-dot" /><div className="typing-dot" />
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </>
+          )}
+        </div>
+
+        {/* Input */}
+        {sessionStarted && (
+          <div className="teach-input-row">
+            <textarea
+              ref={inputRef}
+              className="teach-input"
+              rows={2}
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKey}
+              placeholder="Explain it simply… Press Enter to send"
+              disabled={loading}
+            />
+            <button className="btn btn-child" style={{ alignSelf: "flex-end", padding: "10px 14px" }} onClick={send} disabled={loading || !input.trim()}>
+              {loading ? <Icon.Loader /> : <Icon.Send />}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function buildFallback(form) {
   const career=form.career||"your chosen field"; const lc=career.toLowerCase();
@@ -358,29 +809,12 @@ const DEMO_THEMES=["Business Foundations","Market Research","Building Your Produ
 const DEMO_ROADMAP={title:"Entrepreneurship — Demo Roadmap",months:Array.from({length:6},(_,mi)=>({month:mi+1,theme:DEMO_THEMES[mi],focus:`Month ${mi+1}: ${DEMO_THEMES[mi]}`,weeks:Array.from({length:4},(_,wi)=>({week:wi+1,goal:`Week ${wi+1} — ${DEMO_THEMES[mi]}`,days:Array.from({length:7},(_,di)=>({day:di+1,task:di===6?`Review Week ${wi+1}`:`${DEMO_THEMES[mi]}: sub-topic ${di+1}`})),testTopic:DEMO_THEMES[mi]}))}))};
 const DEMO_PROGRESS={currentMonth:1,currentWeek:1,currentDay:1,streak:3,completedDays:["m1w1d1","m1w1d2","m1w1d3"]};
 
-// ── Email Settings Modal — simple toggles only ─────────────────────────────
+// ── Email Settings Modal ───────────────────────────────────────────────────
 function EmailSettingsModal({ onClose, userEmail, userName, roadmap, progress }) {
   const [prefs, setPrefs] = useState(getEmailPrefs());
   const [saved, setSaved] = useState(false);
-
-  const toggle = (key) => {
-    const newVal = !prefs[key];
-    setEmailPref(key, newVal);
-    setPrefs(p => ({ ...p, [key]: newVal }));
-  };
-
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => { setSaved(false); onClose(); }, 1200);
-  };
-
-  const nextTopic = (() => {
-    try {
-      const { currentMonth=1, currentWeek=1, currentDay=1 } = progress || {};
-      return roadmap?.months?.[currentMonth-1]?.weeks?.[currentWeek-1]?.goal || "your next lesson";
-    } catch { return "your next lesson"; }
-  })();
-
+  const toggle = (key) => { const nv = !prefs[key]; setEmailPref(key, nv); setPrefs(p => ({ ...p, [key]: nv })); };
+  const handleSave = () => { setSaved(true); setTimeout(() => { setSaved(false); onClose(); }, 1200); };
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:20,backdropFilter:"blur(8px)"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div className="card card-p-lg" style={{width:"100%",maxWidth:420}}>
@@ -389,32 +823,15 @@ function EmailSettingsModal({ onClose, userEmail, userName, roadmap, progress })
           <button className="btn btn-ghost btn-icon" onClick={onClose}><Icon.X/></button>
         </div>
         <p style={{fontSize:12,color:"var(--muted)",marginBottom:24,fontFamily:"var(--font-mono)"}}>Sent to {userEmail}</p>
-
         <div className="toggle-row">
-          <div>
-            <p style={{fontSize:14,fontWeight:500,color:"var(--ink)",marginBottom:3}}>Weekly progress update</p>
-            <p style={{fontSize:12,color:"var(--muted)"}}>Every Monday — your streak, next topic, and progress</p>
-          </div>
-          <label className="toggle">
-            <input type="checkbox" checked={prefs.weekly} onChange={()=>toggle("weekly")}/>
-            <span className="toggle-slider"/>
-          </label>
+          <div><p style={{fontSize:14,fontWeight:500,color:"var(--ink)",marginBottom:3}}>Weekly progress update</p><p style={{fontSize:12,color:"var(--muted)"}}>Every Monday — your streak, next topic, and progress</p></div>
+          <label className="toggle"><input type="checkbox" checked={prefs.weekly} onChange={()=>toggle("weekly")}/><span className="toggle-slider"/></label>
         </div>
-
         <div className="toggle-row">
-          <div>
-            <p style={{fontSize:14,fontWeight:500,color:"var(--ink)",marginBottom:3}}>Professor Max check-in</p>
-            <p style={{fontSize:12,color:"var(--muted)"}}>If you miss 3 days — a personal nudge to come back</p>
-          </div>
-          <label className="toggle">
-            <input type="checkbox" checked={prefs.checkin} onChange={()=>toggle("checkin")}/>
-            <span className="toggle-slider"/>
-          </label>
+          <div><p style={{fontSize:14,fontWeight:500,color:"var(--ink)",marginBottom:3}}>Professor Max check-in</p><p style={{fontSize:12,color:"var(--muted)"}}>If you miss 3 days — a personal nudge to come back</p></div>
+          <label className="toggle"><input type="checkbox" checked={prefs.checkin} onChange={()=>toggle("checkin")}/><span className="toggle-slider"/></label>
         </div>
-
-        <button className="btn btn-primary" style={{width:"100%",justifyContent:"center",marginTop:24}} onClick={handleSave}>
-          {saved ? "✓ Saved!" : "Save Preferences"}
-        </button>
+        <button className="btn btn-primary" style={{width:"100%",justifyContent:"center",marginTop:24}} onClick={handleSave}>{saved ? "✓ Saved!" : "Save Preferences"}</button>
       </div>
     </div>
   );
@@ -454,7 +871,6 @@ function Landing({ onStart, onDemo }) {
   const examples = ["Chess","Web Development","Digital Art","Entrepreneurship","Music Production","Graphic Design"];
   const [exIdx, setExIdx] = useState(0);
   useEffect(()=>{const t=setInterval(()=>setExIdx(i=>(i+1)%examples.length),2400);return()=>clearInterval(t);},[]);
-
   return (
     <div style={{minHeight:"100vh",background:"var(--bg)",overflowX:"hidden"}}>
       <section className="hero-section" style={{paddingTop:120,paddingBottom:80,position:"relative",overflow:"hidden"}}>
@@ -487,7 +903,6 @@ function Landing({ onStart, onDemo }) {
           </div>
         </div>
       </section>
-
       <section style={{padding:"80px 0",background:"var(--bg2)"}}>
         <div className="container">
           <div style={{display:"flex",justifyContent:"center"}}>
@@ -500,7 +915,6 @@ function Landing({ onStart, onDemo }) {
           </div>
         </div>
       </section>
-
       <section style={{padding:"80px 0"}}>
         <div className="container">
           <div style={{textAlign:"center",marginBottom:48}}>
@@ -518,7 +932,6 @@ function Landing({ onStart, onDemo }) {
           </div>
         </div>
       </section>
-
       <section style={{padding:"80px 0",background:"var(--bg2)",borderTop:"1px solid var(--border)",borderBottom:"1px solid var(--border)"}}>
         <div className="container">
           <div style={{textAlign:"center",marginBottom:40}}>
@@ -538,7 +951,6 @@ function Landing({ onStart, onDemo }) {
           </div>
         </div>
       </section>
-
       <section style={{padding:"100px 24px",textAlign:"center"}}>
         <h2 style={{fontFamily:"var(--font-display)",fontSize:"clamp(36px,5vw,64px)",fontWeight:300,marginBottom:16,color:"var(--ink)"}}>Ready to start<br/><em style={{fontStyle:"italic",fontWeight:600,color:"var(--accent3)"}}>learning?</em></h2>
         <p style={{fontSize:14,color:"var(--muted)",marginBottom:36,fontFamily:"var(--font-mono)"}}>Build real skills. One day at a time.</p>
@@ -737,6 +1149,8 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
   const[dayDone,setDayDone]=useState(false);const[showTask,setShowTask]=useState(false);const[taskSteps,setTaskSteps]=useState({});
   const[taskSubmitted,setTaskSubmitted]=useState(false);const[taskFeedback,setTaskFeedback]=useState("");const[loadingFeedback,setLoadingFeedback]=useState(false);
   const[taskDoubt,setTaskDoubt]=useState("");const[taskDoubtAnswer,setTaskDoubtAnswer]=useState("");const[loadingTaskDoubt,setLoadingTaskDoubt]=useState(false);
+  // NEW STATE
+  const[showTeachMe,setShowTeachMe]=useState(false);
 
   useEffect(()=>{setLectures(null);setActive(0);setAnswer("");setDayDone(false);setShowTask(false);setTaskSteps({});setTaskSubmitted(false);setTaskFeedback("");loadLectures();},[currentMonth,currentWeek,currentDay]);
 
@@ -786,8 +1200,20 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
 
   if(loading)return(<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"60vh",flexDirection:"column",gap:14,paddingTop:80}}><div style={{width:36,height:36,border:"1px solid var(--border2)",borderTop:"1px solid var(--accent2)",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/><p style={{fontSize:12,color:"var(--muted)",fontFamily:"var(--font-mono)"}}>Loading Day {currentDay} lectures…</p></div>);
 
+  const teachMeTopic = lectures && lectures[active] ? lectures[active].title : weekTopic;
+
   return (
     <div className="page container" style={{paddingTop:84,paddingBottom:64}}>
+      {/* Teach Me Modal */}
+      {showTeachMe && (
+        <TeachMeModal
+          onClose={()=>setShowTeachMe(false)}
+          lectureContext={teachMeTopic}
+          user={user}
+          isDemo={isDemo}
+        />
+      )}
+
       <div className="card card-p" style={{marginBottom:20,borderLeft:"2px solid var(--accent2)"}}>
         <div className="row gap-6" style={{flexWrap:"wrap",marginBottom:6}}>
           <span className="badge badge-neutral">M{currentMonth} · W{currentWeek} · D{currentDay}</span>
@@ -796,14 +1222,30 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
         <h2 style={{fontFamily:"var(--font-display)",fontSize:22,fontWeight:400,marginBottom:2}}>{weekTopic}</h2>
         <p style={{fontSize:11,color:"var(--muted)",fontFamily:"var(--font-mono)"}}>5 lectures · read at your own pace</p>
       </div>
+
       {lectures && (
         <div className="learn-layout" style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+          {/* Sidebar */}
           <div className="learn-sidebar" style={{width:220,flexShrink:0}}>
-            <div className="card" style={{padding:10}}>
+            <div className="card" style={{padding:10,marginBottom:10}}>
               <p style={{fontSize:10,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--muted)",marginBottom:8,fontFamily:"var(--font-mono)",padding:"0 2px"}}>Lectures</p>
               <div className="stack gap-1">{lectures.map((l,i)=>(<button key={i} className={`lec-list-item ${i===active?"active":""}`} onClick={()=>setActive(i)}><span className="lec-num">{i+1}</span><span style={{lineHeight:1.4}}>{l.title}</span></button>))}</div>
             </div>
+
+            {/* ── Teach Me! Button ── */}
+            <button className="teach-btn" onClick={()=>setShowTeachMe(true)} style={{marginBottom:10}}>
+              <ChildBotAvatar size={24} mood="curious" />
+              <div style={{flex:1,textAlign:"left"}}>
+                <div style={{fontSize:13,fontWeight:600}}>Teach Me!</div>
+                <div style={{fontSize:10,color:"rgba(245,158,11,0.7)",fontFamily:"var(--font-mono)",fontWeight:400}}>Feynman Technique</div>
+              </div>
+            </button>
+
+            {/* ── Professor Joke Sidekick ── */}
+            <ProfJokeSidekick topic={weekTopic} />
           </div>
+
+          {/* Main lecture content */}
           <div style={{flex:1,minWidth:0}}>
             <div className="card card-p-lg" style={{marginBottom:14}}>
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20,paddingBottom:16,borderBottom:"1px solid var(--border)"}}>
@@ -837,6 +1279,7 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
           </div>
         </div>
       )}
+
       {showTask&&lectures&&(()=>{
         const task=getWeeklyTask();const allDone=task.steps.every(s=>taskSteps[s.id]?.trim().length>10);
         const colors=["var(--accent2)","#c084fc","var(--emerald)","var(--gold)","var(--ember)"];
@@ -942,8 +1385,17 @@ function WeeklyTest({ progress, roadmap }) {
 
 // ── App ────────────────────────────────────────────────────────────────────
 export default function App() {
-  const[page,setPage]=useState("loading");const[user,setUser]=useState(null);const[profile,setProfile]=useState(null);const[roadmap,setRoadmap]=useState(null);const[progress,setProgress]=useState(null);const[isDemo,setIsDemo]=useState(false);
-  const[showEmailSettings,setShowEmailSettings]=useState(false);const[streakAlert,setStreakAlert]=useState(null);
+  const[page,setPage]=useState("loading");
+  const[user,setUser]=useState(null);
+  const[profile,setProfile]=useState(null);
+  const[roadmap,setRoadmap]=useState(null);
+  const[progress,setProgress]=useState(null);
+  const[isDemo,setIsDemo]=useState(false);
+  const[showEmailSettings,setShowEmailSettings]=useState(false);
+  const[streakAlert,setStreakAlert]=useState(null);
+  // NEW: welcome screen state
+  const[showWelcome,setShowWelcome]=useState(false);
+  const[welcomeName,setWelcomeName]=useState("");
 
   useEffect(()=>{if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));},[]);
 
@@ -965,36 +1417,18 @@ export default function App() {
       const ap=dbToProgress(pg);setProgress(ap);
       const today=new Date().toISOString().slice(0,10);
       const lv=pg?.last_visit;
-
       if(lv&&lv!==today){
         const yesterday=new Date(Date.now()-86400000).toISOString().slice(0,10);
         const msAway=Date.now()-new Date(lv).getTime();
         const daysAway=Math.floor(msAway/(1000*60*60*24));
         const userName=prof?.full_name||authUser.user_metadata?.full_name||"Student";
         const userEmail=authUser.email;
-
-        // Streak lost
-        if(lv!==yesterday){
-          setStreakAlert("lost");
-          const rp={...ap,streak:0};setProgress(rp);
-          await upsertProgress(authUser.id,{...progressToDb(rp),streak:0});
-        }
-
-        // 3-day inactivity check-in
+        if(lv!==yesterday){setStreakAlert("lost");const rp={...ap,streak:0};setProgress(rp);await upsertProgress(authUser.id,{...progressToDb(rp),streak:0});}
         const prefs=getEmailPrefs();
-        if(daysAway>=3&&prefs.checkin){
-          const nextTopic=rm.data?.months?.[ap.currentMonth-1]?.weeks?.[ap.currentWeek-1]?.goal||"your next lesson";
-          sendCheckinEmail(userName,userEmail,nextTopic,daysAway);
-        }
-
-        // Weekly progress email — send on Monday (day 1) if pref enabled
+        if(daysAway>=3&&prefs.checkin){const nextTopic=rm.data?.months?.[ap.currentMonth-1]?.weeks?.[ap.currentWeek-1]?.goal||"your next lesson";sendCheckinEmail(userName,userEmail,nextTopic,daysAway);}
         const dayOfWeek=new Date().getDay();
-        if(dayOfWeek===1&&prefs.weekly){
-          const nextTopic=rm.data?.months?.[ap.currentMonth-1]?.weeks?.[ap.currentWeek-1]?.goal||"your next lesson";
-          sendWeeklyProgressEmail(userName,userEmail,rm.data.title,ap.currentDay,nextTopic,ap.streak);
-        }
+        if(dayOfWeek===1&&prefs.weekly){const nextTopic=rm.data?.months?.[ap.currentMonth-1]?.weeks?.[ap.currentWeek-1]?.goal||"your next lesson";sendWeeklyProgressEmail(userName,userEmail,rm.data.title,ap.currentDay,nextTopic,ap.streak);}
       }
-
       await upsertProgress(authUser.id,{last_visit:today});
       setPage("dashboard");
     }else{
@@ -1003,10 +1437,29 @@ export default function App() {
     }
   };
 
-  const onAuth=async(au,prof,has)=>{setUser(au);setProfile(prof);if(has)await loadUserData(au);else setPage("onboard");};
+  const onAuth=async(au,prof,hasRoadmap)=>{
+    setUser(au);setProfile(prof);
+    if(hasRoadmap){
+      await loadUserData(au);
+    } else {
+      // Brand new signup — show welcome screen after onboarding
+      setPage("onboard");
+    }
+  };
+
   const logout=async()=>{await supabase.auth.signOut();setUser(null);setProfile(null);setRoadmap(null);setProgress(null);setPage("landing");};
   const startDemo=()=>{setRoadmap(DEMO_ROADMAP);setProgress(DEMO_PROGRESS);setIsDemo(true);setPage("dashboard");};
   const exitDemo=()=>{setIsDemo(false);setRoadmap(null);setProgress(null);setUser(null);setPage("landing");};
+
+  // Called when onboarding finishes — show welcome screen first
+  const handleOnboardingDone = (rm, pg) => {
+    setRoadmap(rm);setProgress(pg);
+    const name = profile?.full_name || user?.user_metadata?.full_name || "there";
+    setWelcomeName(name);
+    setShowWelcome(true);
+    setPage("dashboard");
+  };
+
   const showNav=page!=="loading";
   const navUser=isDemo?{email:"demo@velorn.app"}:user;
 
@@ -1021,6 +1474,14 @@ export default function App() {
   return (
     <>
       <style>{css}</style>
+
+      {/* ── Welcome Screen (first login only) ── */}
+      {showWelcome && (
+        <WelcomeScreen
+          name={welcomeName}
+          onDone={() => setShowWelcome(false)}
+        />
+      )}
 
       {streakAlert==="lost"&&(
         <div style={{background:"rgba(248,113,113,0.08)",borderBottom:"1px solid rgba(248,113,113,0.15)",padding:"9px 24px",display:"flex",alignItems:"center",justifyContent:"center",gap:10,fontSize:12,color:"var(--ember)",fontFamily:"var(--font-mono)",position:"fixed",top:60,left:0,right:0,zIndex:190}}>
@@ -1051,7 +1512,7 @@ export default function App() {
 
       {page==="landing"&&<Landing onStart={()=>setPage("auth")} onDemo={startDemo}/>}
       {page==="auth"&&<Auth onAuth={onAuth}/>}
-      {page==="onboard"&&user&&<Onboarding user={user} profile={profile} onDone={(rm,pg)=>{setRoadmap(rm);setProgress(pg);setPage("dashboard");}}/>}
+      {page==="onboard"&&user&&<Onboarding user={user} profile={profile} onDone={handleOnboardingDone}/>}
       {page==="dashboard"&&roadmap&&progress&&<Dashboard user={user} roadmap={roadmap} progress={progress} onUpdateProgress={p=>setProgress(p)} onNav={setPage} isDemo={isDemo}/>}
       {page==="learn"&&roadmap&&progress&&<Learn user={user} progress={progress} roadmap={roadmap} onUpdateProgress={p=>setProgress(p)} isDemo={isDemo} onSignUp={()=>{exitDemo();setPage("auth");}}/>}
       {page==="test"&&roadmap&&progress&&<WeeklyTest progress={progress} roadmap={roadmap}/>}
