@@ -120,6 +120,10 @@ const Icon = {
   Sparkles: ()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>,
   Laugh: ()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 3 4 3 4-3 4-3"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>,
   Child: ()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="7" r="4"/><path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg>,
+  Lightbulb: ()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>,
+  Globe: ()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>,
+  Zap: ()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+  Clipboard: ()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>,
 };
 
 // ── 3D Brain SVG ───────────────────────────────────────────────────────────
@@ -387,22 +391,80 @@ const css = `
   .stat-label{font-size:10px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;font-family:var(--font-mono);}
   .stat-value{font-size:32px;font-weight:600;color:var(--ink);letter-spacing:-0.02em;line-height:1;font-family:var(--font-display);font-style:italic;}
   .stat-sub{font-size:12px;color:var(--muted);margin-top:4px;font-family:var(--font-mono);}
-  .lec-block{padding:14px 18px;border-radius:var(--r);border:1px solid var(--border);margin-bottom:10px;}
-  .lec-block-green{background:rgba(74,222,128,0.04);border-color:rgba(74,222,128,0.15);}
-  .lec-block-red{background:rgba(248,113,113,0.04);border-color:rgba(248,113,113,0.15);}
-  .lec-block-blue{background:rgba(139,92,246,0.04);border-color:rgba(139,92,246,0.15);}
-  .lec-block-label{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:7px;font-family:var(--font-mono);}
-  .lec-block-label-green{color:var(--emerald);}
-  .lec-block-label-red{color:var(--ember);}
-  .lec-block-label-blue{color:var(--accent2);}
-  .lec-block-label-gold{color:var(--gold);}
+  .learn-page{padding-top:84px;padding-bottom:64px;}
+  .learn-header{position:relative;overflow:hidden;margin-bottom:24px;padding:28px 32px;border-radius:14px;background:linear-gradient(135deg,var(--surface) 0%,rgba(139,92,246,0.08) 100%);border:1px solid var(--border2);}
+  .learn-header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent2),var(--gold),transparent);}
+  .learn-header-top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px;}
+  .learn-header-title{font-family:var(--font-display);font-size:clamp(22px,3vw,28px);font-weight:500;line-height:1.25;margin-bottom:6px;}
+  .learn-header-meta{font-size:12px;color:var(--muted);font-family:var(--font-mono);}
+  .learn-day-ring{width:52px;height:52px;border-radius:50%;background:var(--surface2);border:2px solid var(--border2);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;}
+  .learn-day-ring-num{font-family:var(--font-display);font-size:20px;font-weight:600;line-height:1;color:var(--ink);}
+  .learn-day-ring-label{font-size:8px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);font-family:var(--font-mono);margin-top:1px;}
+  .learn-step-dots{display:flex;gap:6px;align-items:center;}
+  .learn-step-dot{flex:1;height:4px;border-radius:999px;background:var(--surface3);transition:all 0.3s;cursor:pointer;border:none;padding:0;}
+  .learn-step-dot.done{background:rgba(167,139,250,0.35);}
+  .learn-step-dot.active{background:var(--accent2);box-shadow:0 0 10px rgba(167,139,250,0.5);}
+  .learn-layout{display:grid;grid-template-columns:260px 1fr;gap:20px;align-items:start;}
+  .learn-sidebar{position:sticky;top:84px;display:flex;flex-direction:column;gap:10px;}
+  .learn-sidebar-card{padding:14px;}
+  .learn-sidebar-label{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.12em;color:var(--muted);margin-bottom:10px;font-family:var(--font-mono);padding:0 4px;}
+  .lec-list-item{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border-radius:10px;cursor:pointer;transition:all 0.18s;font-size:12px;color:var(--muted);border:1px solid transparent;text-align:left;background:none;width:100%;font-family:var(--font);position:relative;}
+  .lec-list-item:hover{background:var(--surface2);color:var(--ink2);border-color:var(--border);}
+  .lec-list-item.active{background:rgba(139,92,246,0.1);border-color:rgba(167,139,250,0.35);color:var(--ink);font-weight:500;box-shadow:0 0 0 1px rgba(167,139,250,0.1);}
+  .lec-list-item.done:not(.active){color:var(--ink2);}
+  .lec-list-item.active::before{content:'';position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:var(--accent2);}
+  .lec-num{width:24px;height:24px;border-radius:8px;background:var(--surface3);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--muted);flex-shrink:0;font-family:var(--font-mono);transition:all 0.18s;}
+  .lec-list-item.active .lec-num{background:var(--accent2);border-color:var(--accent2);color:#fff;box-shadow:0 2px 8px rgba(167,139,250,0.4);}
+  .lec-list-item.done .lec-num{background:rgba(74,222,128,0.12);border-color:rgba(74,222,128,0.3);color:var(--emerald);}
+  .lec-list-title{line-height:1.45;flex:1;padding-top:2px;}
+  .lec-pills{display:none;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:16px;scrollbar-width:none;}
+  .lec-pills::-webkit-scrollbar{display:none;}
+  .lec-pill{flex-shrink:0;padding:8px 14px;border-radius:999px;font-size:12px;font-family:var(--font-mono);cursor:pointer;border:1px solid var(--border2);background:var(--surface2);color:var(--muted);transition:all 0.15s;white-space:nowrap;}
+  .lec-pill:hover{border-color:var(--border3);color:var(--ink2);}
+  .lec-pill.active{background:rgba(139,92,246,0.15);border-color:rgba(167,139,250,0.4);color:var(--ink);font-weight:500;}
+  .lec-content-card{overflow:hidden;}
+  .lec-content-header{display:flex;align-items:flex-start;gap:16px;padding-bottom:22px;margin-bottom:22px;border-bottom:1px solid var(--border);}
+  .lec-content-num{width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-weight:600;font-size:18px;color:#fff;flex-shrink:0;font-family:var(--font-display);box-shadow:0 4px 16px rgba(139,92,246,0.35);}
+  .lec-content-title{font-family:var(--font-display);font-size:clamp(20px,2.5vw,26px);font-weight:500;line-height:1.3;}
+  .lec-content-sub{font-size:11px;color:var(--muted);font-family:var(--font-mono);margin-top:6px;}
+  .lec-sections{display:flex;flex-direction:column;gap:12px;margin-bottom:22px;}
+  .lec-section{display:flex;gap:14px;padding:16px 18px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);transition:border-color 0.2s;}
+  .lec-section:hover{border-color:var(--border2);}
+  .lec-section-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .lec-section-icon-blue{background:rgba(139,92,246,0.12);color:var(--accent2);}
+  .lec-section-icon-green{background:rgba(74,222,128,0.1);color:var(--emerald);}
+  .lec-section-icon-red{background:rgba(248,113,113,0.1);color:var(--ember);}
+  .lec-section-icon-gold{background:rgba(212,168,83,0.12);color:var(--gold);}
+  .lec-section-body{flex:1;min-width:0;}
+  .lec-section-label{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;font-family:var(--font-mono);}
+  .lec-section-label-blue{color:var(--accent2);}
+  .lec-section-label-green{color:var(--emerald);}
+  .lec-section-label-red{color:var(--ember);}
+  .lec-section-label-gold{color:var(--gold);}
   .lec-text{font-size:14px;line-height:1.75;color:var(--ink2);}
-  .answer-box{margin-top:14px;padding:14px 18px;background:var(--surface2);border:1px solid var(--border);border-left:2px solid var(--accent2);border-radius:var(--r);font-size:14px;line-height:1.75;color:var(--ink2);white-space:pre-wrap;}
-  .lec-list-item{display:flex;align-items:flex-start;gap:9px;padding:9px 10px;border-radius:6px;cursor:pointer;transition:all 0.12s;font-size:12px;color:var(--muted);border:1px solid transparent;text-align:left;background:none;width:100%;font-family:var(--font);}
-  .lec-list-item:hover{background:var(--surface2);color:var(--ink2);}
-  .lec-list-item.active{background:var(--surface2);border-color:var(--border2);color:var(--ink);font-weight:500;}
-  .lec-num{width:20px;height:20px;border-radius:50%;background:var(--surface3);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--muted);flex-shrink:0;font-family:var(--font-mono);}
-  .lec-list-item.active .lec-num{background:var(--accent2);border-color:var(--accent2);color:#fff;}
+  .lec-takeaway{display:flex;gap:14px;padding:18px 20px;border-radius:12px;background:linear-gradient(135deg,rgba(212,168,83,0.08),rgba(212,168,83,0.03));border:1px solid var(--gold-border);margin-bottom:14px;}
+  .lec-takeaway-icon{color:var(--gold);flex-shrink:0;padding-top:2px;}
+  .lec-takeaway-label{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.1em;color:var(--gold);margin-bottom:5px;font-family:var(--font-mono);}
+  .lec-takeaway-text{font-size:15px;font-weight:500;color:var(--ink);line-height:1.6;}
+  .lec-homework{padding:18px 20px;border-radius:12px;background:var(--surface2);border:1px solid var(--border);margin-bottom:22px;}
+  .lec-homework-label{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:12px;font-family:var(--font-mono);display:flex;align-items:center;gap:6px;}
+  .lec-homework-item{display:flex;gap:12px;align-items:flex-start;padding:10px 0;}
+  .lec-homework-item:not(:last-child){border-bottom:1px solid var(--border);}
+  .lec-homework-num{width:22px;height:22px;border-radius:6px;background:var(--accent2);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#fff;flex-shrink:0;font-family:var(--font-mono);}
+  .lec-nav-row{display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap;padding-top:4px;}
+  .lec-progress-wrap{margin-bottom:20px;}
+  .lec-progress-meta{display:flex;justify-content:space-between;margin-bottom:8px;font-size:11px;color:var(--muted);font-family:var(--font-mono);}
+  .lec-progress-track{height:6px;border-radius:999px;background:var(--surface3);overflow:hidden;}
+  .lec-progress-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width 0.5s cubic-bezier(0.22,1,0.36,1);box-shadow:0 0 12px rgba(167,139,250,0.4);}
+  .prof-ask-card{position:relative;overflow:hidden;}
+  .prof-ask-card::before{content:'';position:absolute;top:0;right:0;width:120px;height:120px;background:radial-gradient(circle,rgba(139,92,246,0.12) 0%,transparent 70%);pointer-events:none;}
+  .prof-ask-header{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
+  .prof-ask-avatar{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#6d28d9);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 4px 12px rgba(139,92,246,0.3);}
+  .learn-loading{display:flex;align-items:center;justify-content:center;min-height:60vh;flex-direction:column;gap:20px;padding-top:80px;}
+  .learn-loading-ring{width:48px;height:48px;border:2px solid var(--border2);border-top:2px solid var(--accent2);border-radius:50%;animation:spin 0.8s linear infinite;}
+  .learn-loading-text{font-size:13px;color:var(--muted);font-family:var(--font-mono);}
+  .learn-loading-sub{font-size:11px;color:var(--subtle);font-family:var(--font-mono);}
+  .answer-box{margin-top:14px;padding:14px 18px;background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--accent2);border-radius:var(--r);font-size:14px;line-height:1.75;color:var(--ink2);white-space:pre-wrap;}
   .mcq-option{display:block;width:100%;text-align:left;padding:11px 15px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface2);font-family:var(--font);font-size:13px;color:var(--ink2);cursor:pointer;transition:all 0.12s;}
   .mcq-option:hover{border-color:var(--accent2);color:var(--ink);background:var(--surface3);}
   .mcq-option.selected{border-color:var(--accent2);background:rgba(139,92,246,0.08);color:var(--ink);font-weight:500;}
@@ -482,8 +544,11 @@ const css = `
     .hero-brain{width:260px!important;height:260px!important;margin:0 auto;}
     .features-grid{grid-template-columns:1fr!important;}
     .stats-grid{grid-template-columns:repeat(2,1fr)!important;}
-    .learn-layout{flex-direction:column!important;}
-    .learn-sidebar{width:100%!important;}
+    .learn-layout{grid-template-columns:1fr!important;}
+    .learn-sidebar{position:static!important;}
+    .learn-sidebar .learn-sidebar-card{display:none;}
+    .lec-pills{display:flex!important;}
+    .learn-header{padding:22px 20px;}
     .notepad{padding:24px 20px!important;}
     .hero-section{padding:100px 0 60px!important;}
     .testimonials-grid{grid-template-columns:1fr!important;}
@@ -1198,13 +1263,22 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
 
   const getTakeaway=(lec)=>lec.keyTakeaway||lec.takeaway||"";
 
-  if(loading)return(<div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"60vh",flexDirection:"column",gap:14,paddingTop:80}}><div style={{width:36,height:36,border:"1px solid var(--border2)",borderTop:"1px solid var(--accent2)",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/><p style={{fontSize:12,color:"var(--muted)",fontFamily:"var(--font-mono)"}}>Loading Day {currentDay} lectures…</p></div>);
+  if(loading)return(
+    <div className="learn-loading page container">
+      <div className="learn-loading-ring"/>
+      <div style={{textAlign:"center"}}>
+        <p className="learn-loading-text">Preparing Day {currentDay} lectures…</p>
+        <p className="learn-loading-sub">{weekTopic}</p>
+      </div>
+    </div>
+  );
 
   const teachMeTopic = lectures && lectures[active] ? lectures[active].title : weekTopic;
+  const lec = lectures?.[active];
+  const progressPct = lectures ? Math.round(((active + 1) / lectures.length) * 100) : 0;
 
   return (
-    <div className="page container" style={{paddingTop:84,paddingBottom:64}}>
-      {/* Teach Me Modal */}
+    <div className="page container-wide learn-page">
       {showTeachMe && (
         <TeachMeModal
           onClose={()=>setShowTeachMe(false)}
@@ -1214,67 +1288,199 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
         />
       )}
 
-      <div className="card card-p" style={{marginBottom:20,borderLeft:"2px solid var(--accent2)"}}>
-        <div className="row gap-6" style={{flexWrap:"wrap",marginBottom:6}}>
-          <span className="badge badge-neutral">M{currentMonth} · W{currentWeek} · D{currentDay}</span>
-          <span className="badge badge-gold">Professor Max</span>
+      <div className="learn-header card">
+        <div className="learn-header-top">
+          <div>
+            <div className="row gap-6" style={{flexWrap:"wrap",marginBottom:10}}>
+              <span className="badge badge-neutral">Month {currentMonth} · Week {currentWeek}</span>
+              <span className="badge badge-blue"><Icon.BookOpen/> Daily Lectures</span>
+              <span className="badge badge-gold">Professor Max</span>
+            </div>
+            <h2 className="learn-header-title">{weekTopic}</h2>
+            <p className="learn-header-meta">5 lectures · read at your own pace</p>
+          </div>
+          <div className="learn-day-ring">
+            <span className="learn-day-ring-num">{currentDay}</span>
+            <span className="learn-day-ring-label">Day</span>
+          </div>
         </div>
-        <h2 style={{fontFamily:"var(--font-display)",fontSize:22,fontWeight:400,marginBottom:2}}>{weekTopic}</h2>
-        <p style={{fontSize:11,color:"var(--muted)",fontFamily:"var(--font-mono)"}}>5 lectures · read at your own pace</p>
+        {lectures && (
+          <div className="learn-step-dots">
+            {lectures.map((_, i) => (
+              <button
+                key={i}
+                className={`learn-step-dot ${i < active ? "done" : ""} ${i === active ? "active" : ""}`}
+                onClick={() => setActive(i)}
+                aria-label={`Go to lecture ${i + 1}`}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
-      {lectures && (
-        <div className="learn-layout" style={{display:"flex",gap:16,flexWrap:"wrap"}}>
-          {/* Sidebar */}
-          <div className="learn-sidebar" style={{width:220,flexShrink:0}}>
-            <div className="card" style={{padding:10,marginBottom:10}}>
-              <p style={{fontSize:10,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--muted)",marginBottom:8,fontFamily:"var(--font-mono)",padding:"0 2px"}}>Lectures</p>
-              <div className="stack gap-1">{lectures.map((l,i)=>(<button key={i} className={`lec-list-item ${i===active?"active":""}`} onClick={()=>setActive(i)}><span className="lec-num">{i+1}</span><span style={{lineHeight:1.4}}>{l.title}</span></button>))}</div>
+      {lectures && lec && (
+        <div className="learn-layout">
+          <aside className="learn-sidebar">
+            <div className="card learn-sidebar-card">
+              <p className="learn-sidebar-label">Today's Lectures</p>
+              <div className="stack gap-1">
+                {lectures.map((l, i) => (
+                  <button
+                    key={i}
+                    className={`lec-list-item ${i === active ? "active" : ""} ${i < active ? "done" : ""}`}
+                    onClick={() => setActive(i)}
+                  >
+                    <span className="lec-num">{i < active ? "✓" : i + 1}</span>
+                    <span className="lec-list-title">{l.title}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* ── Teach Me! Button ── */}
-            <button className="teach-btn" onClick={()=>setShowTeachMe(true)} style={{marginBottom:10}}>
+            <button className="teach-btn" onClick={() => setShowTeachMe(true)}>
               <ChildBotAvatar size={24} mood="curious" />
-              <div style={{flex:1,textAlign:"left"}}>
-                <div style={{fontSize:13,fontWeight:600}}>Teach Me!</div>
-                <div style={{fontSize:10,color:"rgba(245,158,11,0.7)",fontFamily:"var(--font-mono)",fontWeight:400}}>Feynman Technique</div>
+              <div style={{ flex: 1, textAlign: "left" }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>Teach Me!</div>
+                <div style={{ fontSize: 10, color: "rgba(245,158,11,0.7)", fontFamily: "var(--font-mono)", fontWeight: 400 }}>Feynman Technique</div>
               </div>
             </button>
 
-            {/* ── Professor Joke Sidekick ── */}
             <ProfJokeSidekick topic={weekTopic} />
-          </div>
+          </aside>
 
-          {/* Main lecture content */}
-          <div style={{flex:1,minWidth:0}}>
-            <div className="card card-p-lg" style={{marginBottom:14}}>
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20,paddingBottom:16,borderBottom:"1px solid var(--border)"}}>
-                <div style={{width:32,height:32,borderRadius:6,background:"var(--accent2)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:600,fontSize:13,color:"#fff",flexShrink:0,fontFamily:"var(--font-mono)"}}>{active+1}</div>
-                <h2 style={{fontFamily:"var(--font-display)",fontSize:20,fontWeight:500,lineHeight:1.3}}>{lectures[active].title}</h2>
+          <div style={{ minWidth: 0 }}>
+            <div className="lec-pills">
+              {lectures.map((l, i) => (
+                <button key={i} className={`lec-pill ${i === active ? "active" : ""}`} onClick={() => setActive(i)}>
+                  {i + 1}. {l.title.length > 28 ? l.title.slice(0, 28) + "…" : l.title}
+                </button>
+              ))}
+            </div>
+
+            <div className="card card-p-lg lec-content-card" style={{ marginBottom: 16 }}>
+              <div className="lec-content-header">
+                <div className="lec-content-num">{active + 1}</div>
+                <div>
+                  <h2 className="lec-content-title">{lec.title}</h2>
+                  <p className="lec-content-sub">Lecture {active + 1} of {lectures.length} · {roadmap.title}</p>
+                </div>
               </div>
-              <div style={{marginBottom:18}}>
-                {lectures[active].coreIdea&&(<div className="lec-block"><div className="lec-block-label lec-block-label-blue">Core Concept</div><p className="lec-text">{lectures[active].coreIdea}</p></div>)}
-                {lectures[active].example&&(<div className="lec-block lec-block-blue"><div className="lec-block-label lec-block-label-blue">Real-World Example</div><p className="lec-text">{lectures[active].example}</p></div>)}
-                {lectures[active].action&&(<div className="lec-block lec-block-green"><div className="lec-block-label lec-block-label-green">Action Item</div><p className="lec-text">{lectures[active].action}</p></div>)}
-                {lectures[active].mistake&&(<div className="lec-block lec-block-red"><div className="lec-block-label lec-block-label-red">Common Mistake</div><p className="lec-text">{lectures[active].mistake}</p></div>)}
+
+              <div className="lec-sections">
+                {lec.coreIdea && (
+                  <div className="lec-section">
+                    <div className="lec-section-icon lec-section-icon-blue"><Icon.Lightbulb/></div>
+                    <div className="lec-section-body">
+                      <div className="lec-section-label lec-section-label-blue">Core Concept</div>
+                      <p className="lec-text">{lec.coreIdea}</p>
+                    </div>
+                  </div>
+                )}
+                {lec.example && (
+                  <div className="lec-section">
+                    <div className="lec-section-icon lec-section-icon-blue"><Icon.Globe/></div>
+                    <div className="lec-section-body">
+                      <div className="lec-section-label lec-section-label-blue">Real-World Example</div>
+                      <p className="lec-text">{lec.example}</p>
+                    </div>
+                  </div>
+                )}
+                {lec.action && (
+                  <div className="lec-section">
+                    <div className="lec-section-icon lec-section-icon-green"><Icon.Zap/></div>
+                    <div className="lec-section-body">
+                      <div className="lec-section-label lec-section-label-green">Action Item</div>
+                      <p className="lec-text">{lec.action}</p>
+                    </div>
+                  </div>
+                )}
+                {lec.mistake && (
+                  <div className="lec-section">
+                    <div className="lec-section-icon lec-section-icon-red"><Icon.AlertCircle/></div>
+                    <div className="lec-section-body">
+                      <div className="lec-section-label lec-section-label-red">Common Mistake</div>
+                      <p className="lec-text">{lec.mistake}</p>
+                    </div>
+                  </div>
+                )}
               </div>
-              {getTakeaway(lectures[active])&&(<div style={{background:"rgba(212,168,83,0.06)",border:"1px solid var(--gold-border)",borderRadius:8,padding:"12px 16px",marginBottom:18}}><p style={{fontSize:10,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--gold)",marginBottom:5,fontFamily:"var(--font-mono)"}}>Key Takeaway</p><p style={{fontSize:14,fontWeight:500,color:"var(--ink)",lineHeight:1.6}}>{getTakeaway(lectures[active])}</p></div>)}
-              {lectures[active].homework&&(<div style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:8,padding:"14px 16px",marginBottom:18}}><p style={{fontSize:10,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--muted)",marginBottom:10,fontFamily:"var(--font-mono)"}}>Homework</p>{lectures[active].homework.map((t,i)=>(<div key={i} style={{display:"flex",gap:8,alignItems:"flex-start",marginBottom:i<lectures[active].homework.length-1?8:0}}><div style={{width:18,height:18,borderRadius:4,background:"var(--accent2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:600,color:"#fff",flexShrink:0,fontFamily:"var(--font-mono)"}}>{i+1}</div><p style={{fontSize:13,lineHeight:1.6,color:"var(--ink2)"}}>{t}</p></div>))}</div>)}
-              <div style={{display:"flex",gap:8,justifyContent:"space-between",flexWrap:"wrap"}}>
-                <button className="btn btn-secondary row gap-6" onClick={()=>setActive(a=>Math.max(0,a-1))} disabled={active===0}><Icon.ChevronLeft/> Prev</button>
-                {active<lectures.length-1?<button className="btn btn-primary row gap-6" onClick={()=>setActive(a=>a+1)}>Next <Icon.ChevronRight/></button>:<button className="btn btn-gold row gap-6" onClick={()=>{markDone();setShowTask(true);window.scrollTo({top:document.body.scrollHeight,behavior:"smooth"});}} disabled={dayDone}>{dayDone?"Done ✓":"Complete & Task"}</button>}
+
+              {getTakeaway(lec) && (
+                <div className="lec-takeaway">
+                  <div className="lec-takeaway-icon"><Icon.Star/></div>
+                  <div>
+                    <p className="lec-takeaway-label">Key Takeaway</p>
+                    <p className="lec-takeaway-text">{getTakeaway(lec)}</p>
+                  </div>
+                </div>
+              )}
+
+              {lec.homework && (
+                <div className="lec-homework">
+                  <p className="lec-homework-label"><Icon.Clipboard/> Homework</p>
+                  {lec.homework.map((t, i) => (
+                    <div key={i} className="lec-homework-item">
+                      <div className="lec-homework-num">{i + 1}</div>
+                      <p className="lec-text" style={{ paddingTop: 2 }}>{t}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="lec-nav-row">
+                <button className="btn btn-secondary row gap-6" onClick={() => setActive(a => Math.max(0, a - 1))} disabled={active === 0}>
+                  <Icon.ChevronLeft/> Previous
+                </button>
+                {active < lectures.length - 1 ? (
+                  <button className="btn btn-primary row gap-6" onClick={() => setActive(a => a + 1)}>
+                    Next Lecture <Icon.ChevronRight/>
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-gold row gap-6"
+                    onClick={() => { markDone(); setShowTask(true); window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" }); }}
+                    disabled={dayDone}
+                  >
+                    {dayDone ? "Done ✓" : "Complete & Task"}
+                  </button>
+                )}
               </div>
             </div>
-            <div style={{marginBottom:20}}>
-              <div className="row gap-8" style={{justifyContent:"space-between",marginBottom:5,fontSize:11,color:"var(--muted)",fontFamily:"var(--font-mono)"}}><span>Progress</span><span>{active+1}/{lectures.length}</span></div>
-              <div className="progress-track" style={{height:2}}><div className="progress-fill" style={{width:`${((active+1)/lectures.length)*100}%`}}/></div>
+
+            <div className="lec-progress-wrap">
+              <div className="lec-progress-meta">
+                <span>Lecture progress</span>
+                <span>{active + 1} / {lectures.length} · {progressPct}%</span>
+              </div>
+              <div className="lec-progress-track">
+                <div className="lec-progress-fill" style={{ width: `${progressPct}%` }}/>
+              </div>
             </div>
-            <div className="card card-p">
-              <div className="row gap-7" style={{marginBottom:4}}><Icon.MessageCircle/><h3 style={{fontFamily:"var(--font-display)",fontSize:18,fontWeight:400}}>Ask Professor Max</h3></div>
-              <p style={{fontSize:12,color:"var(--muted)",marginBottom:12}}>Ask anything about today's topic.</p>
-              <textarea className="input" placeholder={`e.g. I don't understand ${weekTopic}...`} value={doubt} onChange={e=>setDoubt(e.target.value)} style={{width:"100%",marginBottom:8}}/>
-              <button className="btn btn-primary btn-sm row gap-6" onClick={submitDoubt} disabled={loadingDoubt||!doubt.trim()}>{loadingDoubt?<><Icon.Loader/>Thinking…</>:<><Icon.Send/>Ask</>}</button>
-              {answer&&(<div className="answer-box"><p style={{fontSize:10,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--accent2)",marginBottom:6,fontFamily:"var(--font-mono)"}}>Professor Max</p>{answer}</div>)}
+
+            <div className="card card-p prof-ask-card">
+              <div className="prof-ask-header">
+                <div className="prof-ask-avatar"><ProfessorAvatar size={28} mood="normal"/></div>
+                <div>
+                  <h3 style={{ fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 400, marginBottom: 2 }}>Ask Professor Max</h3>
+                  <p style={{ fontSize: 12, color: "var(--muted)" }}>Stuck on something? Ask about today's topic.</p>
+                </div>
+              </div>
+              <textarea
+                className="input"
+                placeholder={`e.g. I don't understand ${weekTopic}...`}
+                value={doubt}
+                onChange={e => setDoubt(e.target.value)}
+                style={{ width: "100%", marginBottom: 10 }}
+              />
+              <button className="btn btn-primary btn-sm row gap-6" onClick={submitDoubt} disabled={loadingDoubt || !doubt.trim()}>
+                {loadingDoubt ? <><Icon.Loader/> Thinking…</> : <><Icon.Send/> Ask Professor</>}
+              </button>
+              {answer && (
+                <div className="answer-box">
+                  <p style={{ fontSize: 10, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--accent2)", marginBottom: 6, fontFamily: "var(--font-mono)" }}>Professor Max</p>
+                  {answer}
+                </div>
+              )}
             </div>
           </div>
         </div>
