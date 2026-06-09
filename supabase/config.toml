@@ -3,3 +3,8 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/ask-doubt/deno.json"
 entrypoint = "./functions/ask-doubt/index.ts"
+
+[functions.send-reminders]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/send-reminders/index.ts"

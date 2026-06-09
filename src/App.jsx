@@ -54,16 +54,49 @@ async function sendCheckinEmail(userName, userEmail, nextTopic, daysAway) {
   } catch(e) { console.error("Check-in email error:", e); return false; }
 }
 
-function getEmailPrefs() {
+const EMAIL_PREF_DEFAULTS = { weekly: false, checkin: false };
+
+function emailPrefKey(userId) {
+  return userId ? `velorn_email_prefs_${userId}` : "velorn_email_prefs";
+}
+
+function getLocalEmailPrefs(userId) {
   try {
+    const saved = localStorage.getItem(emailPrefKey(userId));
+    if (saved) return { ...EMAIL_PREF_DEFAULTS, ...JSON.parse(saved) };
     return {
       weekly: localStorage.getItem("velorn_weekly_email") === "true",
       checkin: localStorage.getItem("velorn_checkin_email") === "true",
     };
-  } catch { return { weekly: false, checkin: false }; }
+  } catch { return EMAIL_PREF_DEFAULTS; }
 }
-function setEmailPref(key, val) {
-  try { localStorage.setItem(`velorn_${key}_email`, val ? "true" : "false"); } catch {}
+
+function setLocalEmailPrefs(userId, prefs) {
+  try {
+    localStorage.setItem(emailPrefKey(userId), JSON.stringify({ ...EMAIL_PREF_DEFAULTS, ...prefs }));
+    localStorage.setItem("velorn_weekly_email", prefs.weekly ? "true" : "false");
+    localStorage.setItem("velorn_checkin_email", prefs.checkin ? "true" : "false");
+  } catch {
+    // localStorage can be unavailable in private or restricted browser contexts.
+  }
+}
+
+function saveKnownDeviceUser(authUser, profile) {
+  try {
+    localStorage.setItem("velorn_last_user", JSON.stringify({
+      email: authUser?.email || "",
+      name: profile?.full_name || authUser?.user_metadata?.full_name || "",
+      savedAt: new Date().toISOString(),
+    }));
+  } catch {
+    // Remembering this device is best-effort only.
+  }
+}
+
+function getKnownDeviceUser() {
+  try {
+    return JSON.parse(localStorage.getItem("velorn_last_user") || "null");
+  } catch { return null; }
 }
 
 async function askClaude(messages) {
@@ -80,6 +113,36 @@ async function askClaude(messages) {
 
 async function getProfile(userId) { const { data } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle(); return data; }
 async function upsertProfile(userId, fields) { await supabase.from("profiles").upsert({ id: userId, ...fields }); }
+async function getEmailPrefs(userId) {
+  const localPrefs = getLocalEmailPrefs(userId);
+  if (!userId) return localPrefs;
+  try {
+    const { data, error } = await supabase
+      .from("email_preferences")
+      .select("weekly_enabled, checkin_enabled")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return localPrefs;
+    const prefs = { weekly: !!data.weekly_enabled, checkin: !!data.checkin_enabled };
+    setLocalEmailPrefs(userId, prefs);
+    return prefs;
+  } catch (e) {
+    console.warn("Email preferences fell back to this device:", e);
+    return localPrefs;
+  }
+}
+async function upsertEmailPrefs(userId, prefs) {
+  setLocalEmailPrefs(userId, prefs);
+  if (!userId) return;
+  const { error } = await supabase.from("email_preferences").upsert({
+    user_id: userId,
+    weekly_enabled: !!prefs.weekly,
+    checkin_enabled: !!prefs.checkin,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "user_id" });
+  if (error) throw error;
+}
 async function getRoadmap(userId) { const { data } = await supabase.from("roadmaps").select("*").eq("user_id", userId).maybeSingle(); return data; }
 async function upsertRoadmap(userId, roadmapData, meta = {}) { await supabase.from("roadmaps").upsert({ user_id: userId, title: roadmapData.title, data: roadmapData, ...meta }); }
 async function getProgress(userId) {
@@ -186,7 +249,6 @@ const BrainCGI = () => (
 
 // ── Professor Max mini avatar SVG ──────────────────────────────────────────
 const ProfessorAvatar = ({ size = 44, mood = "normal" }) => {
-  const eyeY = mood === "wink" ? 14 : 12;
   return (
     <svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg" width={size} height={size}>
       <defs>
@@ -649,7 +711,7 @@ const PROF_JOKES = [
   "Why did the math book look so sad? It had too many problems. 📚",
 ];
 
-function ProfJokeSidekick({ topic }) {
+function ProfJokeSidekick() {
   const [jokeIdx, setJokeIdx] = useState(() => Math.floor(Math.random() * PROF_JOKES.length));
   const [mood, setMood] = useState("normal");
   const [key, setKey] = useState(0);
@@ -677,7 +739,7 @@ function ProfJokeSidekick({ topic }) {
 }
 
 // ── Teach Me! Child Bot Modal ──────────────────────────────────────────────
-function TeachMeModal({ onClose, lectureContext, user, isDemo }) {
+function TeachMeModal({ onClose, lectureContext }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -875,11 +937,38 @@ const DEMO_ROADMAP={title:"Entrepreneurship — Demo Roadmap",months:Array.from(
 const DEMO_PROGRESS={currentMonth:1,currentWeek:1,currentDay:1,streak:3,completedDays:["m1w1d1","m1w1d2","m1w1d3"]};
 
 // ── Email Settings Modal ───────────────────────────────────────────────────
-function EmailSettingsModal({ onClose, userEmail, userName, roadmap, progress }) {
-  const [prefs, setPrefs] = useState(getEmailPrefs());
+function EmailSettingsModal({ onClose, userId, userEmail }) {
+  const [prefs, setPrefs] = useState(getLocalEmailPrefs(userId));
   const [saved, setSaved] = useState(false);
-  const toggle = (key) => { const nv = !prefs[key]; setEmailPref(key, nv); setPrefs(p => ({ ...p, [key]: nv })); };
-  const handleSave = () => { setSaved(true); setTimeout(() => { setSaved(false); onClose(); }, 1200); };
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let alive = true;
+    getEmailPrefs(userId).then(next => { if (alive) setPrefs(next); });
+    return () => { alive = false; };
+  }, [userId]);
+  const toggle = async (key) => {
+    const next = { ...prefs, [key]: !prefs[key] };
+    setPrefs(next);
+    setError("");
+    setSaving(true);
+    try { await upsertEmailPrefs(userId, next); }
+    catch { setError("Could not save to your account. It is saved on this device for now."); }
+    finally { setSaving(false); }
+  };
+  const handleSave = async () => {
+    setError("");
+    setSaving(true);
+    try {
+      await upsertEmailPrefs(userId, prefs);
+      setSaved(true);
+      setTimeout(() => { setSaved(false); onClose(); }, 900);
+    } catch {
+      setError("Could not save to your account. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:20,backdropFilter:"blur(8px)"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div className="card card-p-lg" style={{width:"100%",maxWidth:420}}>
@@ -888,15 +977,16 @@ function EmailSettingsModal({ onClose, userEmail, userName, roadmap, progress })
           <button className="btn btn-ghost btn-icon" onClick={onClose}><Icon.X/></button>
         </div>
         <p style={{fontSize:12,color:"var(--muted)",marginBottom:24,fontFamily:"var(--font-mono)"}}>Sent to {userEmail}</p>
+        {error&&<div style={{marginBottom:12,padding:"8px 12px",background:"var(--ember-light)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:6,fontSize:12,color:"var(--ember)"}}>{error}</div>}
         <div className="toggle-row">
           <div><p style={{fontSize:14,fontWeight:500,color:"var(--ink)",marginBottom:3}}>Weekly progress update</p><p style={{fontSize:12,color:"var(--muted)"}}>Every Monday — your streak, next topic, and progress</p></div>
-          <label className="toggle"><input type="checkbox" checked={prefs.weekly} onChange={()=>toggle("weekly")}/><span className="toggle-slider"/></label>
+          <label className="toggle"><input type="checkbox" checked={prefs.weekly} onChange={()=>toggle("weekly")} disabled={saving}/><span className="toggle-slider"/></label>
         </div>
         <div className="toggle-row">
-          <div><p style={{fontSize:14,fontWeight:500,color:"var(--ink)",marginBottom:3}}>Professor Max check-in</p><p style={{fontSize:12,color:"var(--muted)"}}>If you miss 3 days — a personal nudge to come back</p></div>
-          <label className="toggle"><input type="checkbox" checked={prefs.checkin} onChange={()=>toggle("checkin")}/><span className="toggle-slider"/></label>
+          <div><p style={{fontSize:14,fontWeight:500,color:"var(--ink)",marginBottom:3}}>Professor Max check-in</p><p style={{fontSize:12,color:"var(--muted)"}}>If you miss 2 days — a personal nudge to come back</p></div>
+          <label className="toggle"><input type="checkbox" checked={prefs.checkin} onChange={()=>toggle("checkin")} disabled={saving}/><span className="toggle-slider"/></label>
         </div>
-        <button className="btn btn-primary" style={{width:"100%",justifyContent:"center",marginTop:24}} onClick={handleSave}>{saved ? "✓ Saved!" : "Save Preferences"}</button>
+        <button className="btn btn-primary" style={{width:"100%",justifyContent:"center",marginTop:24}} onClick={handleSave} disabled={saving}>{saving ? "Saving..." : saved ? "Saved!" : "Save Preferences"}</button>
       </div>
     </div>
   );
@@ -1030,8 +1120,9 @@ function Landing({ onStart, onDemo }) {
 
 // ── Auth ───────────────────────────────────────────────────────────────────
 function Auth({ onAuth }) {
-  const [mode,setMode]=useState("signup");
-  const [form,setForm]=useState({name:"",age:"",grade:"",email:"",password:""});
+  const knownUser = getKnownDeviceUser();
+  const [mode,setMode]=useState(knownUser?.email ? "login" : "signup");
+  const [form,setForm]=useState({name:knownUser?.name||"",age:"",grade:"",email:knownUser?.email||"",password:""});
   const [err,setErr]=useState(""); const [loading,setLoading]=useState(false);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const handleGoogle=async()=>{setLoading(true);setErr("");const redirectTo=window.location.hostname==="localhost"?"http://localhost:5173":"https://velorn.vercel.app";const{error}=await supabase.auth.signInWithOAuth({provider:"google",options:{redirectTo}});if(error){setErr(error.message);setLoading(false);}};
@@ -1041,11 +1132,11 @@ function Auth({ onAuth }) {
       if(!form.name||!form.age||!form.grade||!form.email||!form.password){setErr("All fields required.");setLoading(false);return;}
       const{data,error}=await supabase.auth.signUp({email:form.email,password:form.password,options:{data:{full_name:form.name}}});
       if(error){setErr(error.message);setLoading(false);return;}
-      if(data.user){await upsertProfile(data.user.id,{full_name:form.name,age:parseInt(form.age),grade:form.grade});onAuth(data.user,{full_name:form.name,age:form.age,grade:form.grade},false);}
+      if(data.user){const prof={full_name:form.name,age:form.age,grade:form.grade};await upsertProfile(data.user.id,{full_name:form.name,age:parseInt(form.age),grade:form.grade});saveKnownDeviceUser(data.user,prof);onAuth(data.user,prof,false);}
     }else{
       const{data,error}=await supabase.auth.signInWithPassword({email:form.email,password:form.password});
       if(error){setErr("Invalid email or password.");setLoading(false);return;}
-      const profile=await getProfile(data.user.id);onAuth(data.user,profile,true);
+      const profile=await getProfile(data.user.id);saveKnownDeviceUser(data.user,profile);onAuth(data.user,profile,true);
     }
     setLoading(false);
   };
@@ -1114,7 +1205,7 @@ function Onboarding({ user, profile, onDone }) {
       await upsertRoadmap(user.id,roadmap,{career:form.career,level:form.level,daily_time:form.time,goal:form.goal});
       const ip={current_month:1,current_week:1,current_day:1,streak:0,completed_days:[],last_visit:new Date().toISOString().slice(0,10)};
       await upsertProgress(user.id,ip);onDone(roadmap,dbToProgress(ip));
-    } catch(e) {
+    } catch {
       const fallback=buildFallback(form);
       await upsertRoadmap(user.id,fallback,{career:form.career,level:form.level,daily_time:form.time,goal:form.goal});
       const ip={current_month:1,current_week:1,current_day:1,streak:0,completed_days:[],last_visit:new Date().toISOString().slice(0,10)};
@@ -1225,7 +1316,7 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
     if(!isDemo&&user?.id){const cached=await getCachedLectures(user.id,cacheKey);if(cached&&cached.length>=3){setLectures(cached);setLoading(false);return;}}
     const prompt=`You are a world-class mentor teaching a 14-year-old beginner.\nWeek topic: "${weekTopic}"\nSubject: "${roadmap.title}"\nToday is Day ${currentDay} of 7 this week.\nFor Day ${currentDay}, cover sub-topics ${(currentDay-1)*5+1} to ${currentDay*5} of "${weekTopic}". Do NOT repeat previous days.\nGenerate EXACTLY 5 lectures. Return ONLY valid JSON. No markdown, no backticks.\n{"lectures":[{"num":1,"title":"Clear concise title","coreIdea":"2-3 sentences","example":"Real-world example","action":"One task","mistake":"One mistake","takeaway":"One sentence"},{"num":2,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":3,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":4,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":5,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"...","homework":["Task 1","Task 2"]}]}`;
     let raw="";
-    try{raw=await askClaude([{role:"user",content:prompt}]);}catch(e){raw="";}
+    try{raw=await askClaude([{role:"user",content:prompt}]);}catch{raw="";}
     if(raw?.trim()){
       try{let c=raw.trim().replace(/```json|```/gi,"").replace(/,(\s*[}\]])/g,"$1");const m=c.match(/\{[\s\S]*\}/);
         if(m){const p=JSON.parse(m[0]);const a=p.lectures&&Array.isArray(p.lectures)?p.lectures:[];if(a.length>=3){setLectures(a);if(!isDemo&&user?.id)await saveCachedLectures(user.id,cacheKey,a);setLoading(false);return;}}
@@ -1250,9 +1341,9 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
     const task=getWeeklyTask();if(!task.steps.every(s=>taskSteps[s.id]?.trim().length>10))return;
     setLoadingFeedback(true);const submission=task.steps.map(s=>`${s.label}: ${taskSteps[s.id]}`).join("\n\n");
     let fb="Good work. Your submission shows clear thinking.";
-    try{const res=await askClaude([{role:"user",content:`Student learning "${roadmap.title}" submitted work on "${weekTopic}":\n\n${submission}\n\nGive honest, specific feedback. Around 200 words.`}]);if(res&&res.trim().length>20)fb=res;}catch{}
+    try{const res=await askClaude([{role:"user",content:`Student learning "${roadmap.title}" submitted work on "${weekTopic}":\n\n${submission}\n\nGive honest, specific feedback. Around 200 words.`}]);if(res&&res.trim().length>20)fb=res;}catch{fb="Good work. Your submission shows clear thinking.";}
     setTaskFeedback(fb);setTaskSubmitted(true);setLoadingFeedback(false);
-    try{await saveTaskSubmission(user.id,{weekKey:`m${currentMonth}w${currentWeek}d${currentDay}`,career:roadmap.title,taskTitle:getWeeklyTask().title,answers:taskSteps,feedback:fb});}catch{}
+    try{await saveTaskSubmission(user.id,{weekKey:`m${currentMonth}w${currentWeek}d${currentDay}`,career:roadmap.title,taskTitle:getWeeklyTask().title,answers:taskSteps,feedback:fb});}catch{console.warn("Task submission could not be saved.");}
   };
 
   const submitTaskDoubt=async()=>{
@@ -1538,7 +1629,7 @@ function WeeklyTest({ progress, roadmap }) {
     setLoading(true);setSubmitted(false);setAnswers({});setCurrentQ(0);let allQ=[];
     try{const raw=await askClaude([{role:"user",content:`Create 25 multiple choice questions for a student learning about "${topic}".\nReturn ONLY JSON:\n{"questions":[{"q":"Question?","options":["A) answer","B) answer","C) answer","D) answer"],"answer":"A","explanation":"Why"}]}`}]);
       let c=raw.trim().replace(/```json|```/gi,"").replace(/,(\s*[}\]])/g,"$1");const m=c.match(/\{[\s\S]*\}/);if(m){const d=JSON.parse(m[0]);if(d.questions?.length>0)allQ=d.questions.slice(0,25);}
-    }catch(e){}
+    }catch{allQ=[];}
     if(allQ.length===0)allQ=Array.from({length:25},(_,i)=>({q:`Question ${i+1}: What is an important concept in ${topic}?`,options:["A) Option A","B) Option B","C) Option C","D) Option D"],answer:"A",explanation:`This is a key concept in ${topic}.`}));
     setQuestions(allQ);setLoading(false);
   };
@@ -1615,6 +1706,7 @@ export default function App() {
   const loadUserData=async(authUser)=>{
     setUser(authUser);
     const prof=await getProfile(authUser.id);setProfile(prof);
+    saveKnownDeviceUser(authUser, prof);
     const rm=await getRoadmap(authUser.id);
     const pg=await getProgress(authUser.id);
 
@@ -1630,8 +1722,8 @@ export default function App() {
         const userName=prof?.full_name||authUser.user_metadata?.full_name||"Student";
         const userEmail=authUser.email;
         if(lv!==yesterday){setStreakAlert("lost");const rp={...ap,streak:0};setProgress(rp);await upsertProgress(authUser.id,{...progressToDb(rp),streak:0});}
-        const prefs=getEmailPrefs();
-        if(daysAway>=3&&prefs.checkin){const nextTopic=rm.data?.months?.[ap.currentMonth-1]?.weeks?.[ap.currentWeek-1]?.goal||"your next lesson";sendCheckinEmail(userName,userEmail,nextTopic,daysAway);}
+        const prefs=await getEmailPrefs(authUser.id);
+        if(daysAway>=2&&prefs.checkin){const nextTopic=rm.data?.months?.[ap.currentMonth-1]?.weeks?.[ap.currentWeek-1]?.goal||"your next lesson";sendCheckinEmail(userName,userEmail,nextTopic,daysAway);}
         const dayOfWeek=new Date().getDay();
         if(dayOfWeek===1&&prefs.weekly){const nextTopic=rm.data?.months?.[ap.currentMonth-1]?.weeks?.[ap.currentWeek-1]?.goal||"your next lesson";sendWeeklyProgressEmail(userName,userEmail,rm.data.title,ap.currentDay,nextTopic,ap.streak);}
       }
@@ -1709,6 +1801,7 @@ export default function App() {
       {showEmailSettings&&!isDemo&&(
         <EmailSettingsModal
           onClose={()=>setShowEmailSettings(false)}
+          userId={user?.id}
           userEmail={user?.email}
           userName={profile?.full_name||user?.user_metadata?.full_name||"Student"}
           roadmap={roadmap}

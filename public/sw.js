@@ -1,7 +1,7 @@
 // public/sw.js
 const CACHE_NAME = 'velorn-v1';
 
-self.addEventListener('install', (event) => {
+self.addEventListener('install', () => {
   console.log('Service Worker installing...');
 });
 

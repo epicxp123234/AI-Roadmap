@@ -1,5 +1,5 @@
 // supabase/functions/send-reminders/index.ts
-// Runs daily via pg_cron — sends emails to users inactive 3+ days
+// Runs daily via pg_cron — sends emails to users inactive 2+ days
 
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -37,10 +37,24 @@ Deno.serve(async (req: Request) => {
 
     if (error) throw error;
 
+    const { data: allPrefs, error: prefsError } = await supabase
+      .from("email_preferences")
+      .select("user_id, weekly_enabled, checkin_enabled");
+
+    if (prefsError) throw prefsError;
+
+    const prefsByUser = new Map(
+      (allPrefs || []).map((pref) => [pref.user_id, pref])
+    );
+
     let checkinSent = 0;
     let weeklySent = 0;
 
     for (const row of allProgress || []) {
+      const prefs = prefsByUser.get(row.user_id);
+      const weeklyEnabled = prefs?.weekly_enabled === true;
+      const checkinEnabled = prefs?.checkin_enabled === true;
+
       // Get user email and name
       const { data: authUser } = await supabase.auth.admin.getUserById(row.user_id);
       if (!authUser?.user) continue;
@@ -71,10 +85,10 @@ Deno.serve(async (req: Request) => {
       const msAway = today.getTime() - lastVisit.getTime();
       const daysAway = Math.floor(msAway / (1000 * 60 * 60 * 24));
 
-      // ── 3-day inactivity check-in ──
-      if (daysAway >= 3 && daysAway < 14) {
-        // Don't spam — only send once per 3-day window
-        const shouldSend = daysAway === 3 || daysAway === 7 || daysAway === 10;
+      // ── Inactivity check-in ──
+      if (checkinEnabled && daysAway >= 2 && daysAway < 14) {
+        // Don't spam — send at useful intervals while the user is away.
+        const shouldSend = daysAway === 2 || daysAway === 3 || daysAway === 7 || daysAway === 10;
         if (shouldSend) {
           await sendEmail(EMAILJS_CHECKIN, {
             to_name: userName,
@@ -88,7 +102,7 @@ Deno.serve(async (req: Request) => {
       }
 
       // ── Weekly progress email (every Monday) ──
-      if (dayOfWeek === 1 && daysAway < 3) {
+      if (weeklyEnabled && dayOfWeek === 1 && daysAway < 3) {
         // Only send to active users (visited in last 3 days)
         await sendEmail(EMAILJS_WEEKLY, {
           to_name: userName,
