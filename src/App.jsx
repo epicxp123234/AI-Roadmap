@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL  = "https://knqclhfxhkishaivowhe.supabase.co";
@@ -7,54 +7,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: "velorn-auth" }
 });
 
-const EMAILJS_SERVICE  = "service_az5xx88";
-const EMAILJS_KEY      = "_22wrLmwQJNVFd-pa";
-const EMAILJS_WEEKLY   = "template_zheyc9c";
-const EMAILJS_CHECKIN  = "template_yr13akv";
-
-async function loadEmailJS() {
-  if (window.emailjs) return true;
-  try {
-    await new Promise((res, rej) => {
-      const s = document.createElement("script");
-      s.src = "https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js";
-      s.onload = res; s.onerror = rej;
-      document.head.appendChild(s);
-    });
-    window.emailjs.init(EMAILJS_KEY);
-    return true;
-  } catch { return false; }
-}
-
-async function sendWeeklyProgressEmail(userName, userEmail, roadmapTitle, currentDay, nextTopic, streak) {
-  try {
-    await loadEmailJS();
-    await window.emailjs.send(EMAILJS_SERVICE, EMAILJS_WEEKLY, {
-      to_name: userName, to_email: userEmail,
-      roadmap_title: roadmapTitle,
-      current_day: currentDay,
-      next_topic: nextTopic,
-      streak: streak,
-      app_url: "https://velorn.vercel.app"
-    });
-    return true;
-  } catch(e) { console.error("Weekly email error:", e); return false; }
-}
-
-async function sendCheckinEmail(userName, userEmail, nextTopic, daysAway) {
-  try {
-    await loadEmailJS();
-    await window.emailjs.send(EMAILJS_SERVICE, EMAILJS_CHECKIN, {
-      to_name: userName, to_email: userEmail,
-      next_topic: nextTopic,
-      days_away: daysAway,
-      app_url: "https://velorn.vercel.app"
-    });
-    return true;
-  } catch(e) { console.error("Check-in email error:", e); return false; }
-}
-
 const EMAIL_PREF_DEFAULTS = { weekly: false, checkin: false };
+const LANDING_EXAMPLES = ["Chess","Web Development","Digital Art","Entrepreneurship","Music Production","Graphic Design"];
 
 function emailPrefKey(userId) {
   return userId ? `velorn_email_prefs_${userId}` : "velorn_email_prefs";
@@ -1023,9 +977,8 @@ function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, isDemo, onSignU
 function Landing({ onStart, onDemo }) {
   const [typed, setTyped] = useState("");
   const [focused, setFocused] = useState(false);
-  const examples = ["Chess","Web Development","Digital Art","Entrepreneurship","Music Production","Graphic Design"];
   const [exIdx, setExIdx] = useState(0);
-  useEffect(()=>{const t=setInterval(()=>setExIdx(i=>(i+1)%examples.length),2400);return()=>clearInterval(t);},[]);
+  useEffect(()=>{const t=setInterval(()=>setExIdx(i=>(i+1)%LANDING_EXAMPLES.length),2400);return()=>clearInterval(t);},[]);
   return (
     <div style={{minHeight:"100vh",background:"var(--bg)",overflowX:"hidden"}}>
       <section className="hero-section" style={{paddingTop:120,paddingBottom:80,position:"relative",overflow:"hidden"}}>
@@ -1046,7 +999,7 @@ function Landing({ onStart, onDemo }) {
               </p>
               <div style={{marginBottom:20}}>
                 <div style={{display:"flex",alignItems:"center",background:"var(--surface)",border:`1px solid ${focused?"var(--accent2)":"var(--border2)"}`,borderRadius:10,overflow:"hidden",boxShadow:focused?"0 0 0 3px rgba(167,139,250,0.1)":"0 8px 32px rgba(0,0,0,0.3)",transition:"all 0.2s",maxWidth:500}}>
-                  <input value={typed} onChange={e=>setTyped(e.target.value)} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} placeholder={`e.g. ${examples[exIdx]}`} style={{flex:1,padding:"13px 18px",border:"none",outline:"none",fontSize:14,fontFamily:"var(--font)",background:"transparent",color:"var(--ink)"}} onKeyDown={e=>e.key==="Enter"&&onStart()}/>
+                  <input value={typed} onChange={e=>setTyped(e.target.value)} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} placeholder={`e.g. ${LANDING_EXAMPLES[exIdx]}`} style={{flex:1,padding:"13px 18px",border:"none",outline:"none",fontSize:14,fontFamily:"var(--font)",background:"transparent",color:"var(--ink)"}} onKeyDown={e=>e.key==="Enter"&&onStart()}/>
                   <button className="btn btn-primary" style={{margin:5,borderRadius:7,padding:"9px 18px",flexShrink:0,fontSize:13}} onClick={onStart}>Build Roadmap →</button>
                 </div>
                 <p style={{fontSize:11,color:"var(--subtle)",marginTop:8,fontFamily:"var(--font-mono)"}}>No credit card · 30 seconds to set up</p>
@@ -1308,9 +1261,7 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
   // NEW STATE
   const[showTeachMe,setShowTeachMe]=useState(false);
 
-  useEffect(()=>{setLectures(null);setActive(0);setAnswer("");setDayDone(false);setShowTask(false);setTaskSteps({});setTaskSubmitted(false);setTaskFeedback("");loadLectures();},[currentMonth,currentWeek,currentDay]);
-
-  const loadLectures=async()=>{
+  const loadLectures=useCallback(async()=>{
     setLoading(true);
     const cacheKey=`m${currentMonth}w${currentWeek}d${currentDay}`;
     if(!isDemo&&user?.id){const cached=await getCachedLectures(user.id,cacheKey);if(cached&&cached.length>=3){setLectures(cached);setLoading(false);return;}}
@@ -1324,7 +1275,9 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
     }
     setLectures(Array.from({length:5},(_,i)=>({num:i+1,title:`${weekTopic} — Part ${i+1}`,coreIdea:`This covers a key aspect of ${weekTopic}.`,example:`In ${roadmap.title}, this appears when working on real projects.`,action:`Spend 10 minutes applying this today.`,mistake:`Beginners often skip this — don't.`,takeaway:`Mastering this gives you a real edge.`,homework:i===4?["Find a real-world example","Apply today's concepts"]:null})));
     setLoading(false);
-  };
+  }, [currentMonth, currentWeek, currentDay, isDemo, user?.id, weekTopic, roadmap.title]);
+
+  useEffect(()=>{setLectures(null);setActive(0);setAnswer("");setDayDone(false);setShowTask(false);setTaskSteps({});setTaskSubmitted(false);setTaskFeedback("");loadLectures();},[loadLectures]);
 
   const submitDoubt=async()=>{if(!doubt.trim()||loadingDoubt)return;setLoadingDoubt(true);setAnswer("");try{const res=await askClaude([{role:"user",content:`${PROFESSOR_SYSTEM}\n\nStudent is learning "${roadmap.title}", this week: "${weekTopic}". Question: "${doubt}"\n\nAnswer clearly and specifically. Under 150 words.`}]);setAnswer(res||"No response. Try again.");}catch{setAnswer("Something went wrong.");}setLoadingDoubt(false);};
   const markDone=()=>{setDayDone(true);if(onUpdateProgress)onUpdateProgress({type:"complete_day"});};
@@ -1717,15 +1670,7 @@ export default function App() {
       const lv=pg?.last_visit;
       if(lv&&lv!==today){
         const yesterday=new Date(Date.now()-86400000).toISOString().slice(0,10);
-        const msAway=Date.now()-new Date(lv).getTime();
-        const daysAway=Math.floor(msAway/(1000*60*60*24));
-        const userName=prof?.full_name||authUser.user_metadata?.full_name||"Student";
-        const userEmail=authUser.email;
         if(lv!==yesterday){setStreakAlert("lost");const rp={...ap,streak:0};setProgress(rp);await upsertProgress(authUser.id,{...progressToDb(rp),streak:0});}
-        const prefs=await getEmailPrefs(authUser.id);
-        if(daysAway>=2&&prefs.checkin){const nextTopic=rm.data?.months?.[ap.currentMonth-1]?.weeks?.[ap.currentWeek-1]?.goal||"your next lesson";sendCheckinEmail(userName,userEmail,nextTopic,daysAway);}
-        const dayOfWeek=new Date().getDay();
-        if(dayOfWeek===1&&prefs.weekly){const nextTopic=rm.data?.months?.[ap.currentMonth-1]?.weeks?.[ap.currentWeek-1]?.goal||"your next lesson";sendWeeklyProgressEmail(userName,userEmail,rm.data.title,ap.currentDay,nextTopic,ap.streak);}
       }
       await upsertProgress(authUser.id,{last_visit:today});
       setPage("dashboard");

@@ -1,18 +1,15 @@
-// supabase/functions/send-reminders/index.ts
-// Runs daily via pg_cron — sends emails to users inactive 2+ days
-
-
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const EMAILJS_SERVICE  = "service_az5xx88";
-const EMAILJS_KEY      = "_22wrLmwQJNVFd-pa";
-const EMAILJS_CHECKIN  = "template_yr13akv";
-const EMAILJS_WEEKLY   = "template_zheyc9c";
+const EMAILJS_SERVICE = "service_az5xx88";
+const EMAILJS_CHECKIN = "template_yr13akv";
+const EMAILJS_WEEKLY = "template_zheyc9c";
+const EMAILJS_PUBLIC_KEY = "_22wrLmwQJNVFd-pa";
 
 Deno.serve(async (req: Request) => {
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type",
   };
 
   if (req.method === "OPTIONS") {
@@ -20,7 +17,6 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    // Use service role key to read all users
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
@@ -28,18 +24,17 @@ Deno.serve(async (req: Request) => {
 
     const today = new Date();
     const todayStr = today.toISOString().slice(0, 10);
-    const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon
+    const dayOfWeek = today.getDay();
 
-    // Get all progress rows
     const { data: allProgress, error } = await supabase
       .from("progress")
-      .select("user_id, last_visit, current_month, current_week, streak");
+      .select("user_id, last_visit, current_month, current_week, current_day, streak");
 
     if (error) throw error;
 
     const { data: allPrefs, error: prefsError } = await supabase
       .from("email_preferences")
-      .select("user_id, weekly_enabled, checkin_enabled");
+      .select("user_id, weekly_enabled, checkin_enabled, checkin_last_sent_on, weekly_last_sent_on");
 
     if (prefsError) throw prefsError;
 
@@ -55,99 +50,152 @@ Deno.serve(async (req: Request) => {
       const weeklyEnabled = prefs?.weekly_enabled === true;
       const checkinEnabled = prefs?.checkin_enabled === true;
 
-      // Get user email and name
-      const { data: authUser } = await supabase.auth.admin.getUserById(row.user_id);
-      if (!authUser?.user) continue;
+      const { data: userData, error: userError } =
+        await supabase.auth.admin.getUserById(row.user_id);
 
-      const userEmail = authUser.user.email;
-      const userName = authUser.user.user_metadata?.full_name || 
-                       authUser.user.email?.split("@")[0] || "Student";
+      if (userError || !userData?.user) continue;
 
+      const userEmail = userData.user.email;
       if (!userEmail) continue;
 
-      // Get roadmap for next topic
+      const userName =
+        userData.user.user_metadata?.full_name ||
+        userEmail.split("@")[0] ||
+        "Student";
+
       const { data: roadmapRow } = await supabase
         .from("roadmaps")
         .select("data, title")
         .eq("user_id", row.user_id)
         .maybeSingle();
 
-      const nextTopic = roadmapRow?.data?.months?.[
-        (row.current_month || 1) - 1
-      ]?.weeks?.[
-        (row.current_week || 1) - 1
-      ]?.goal || "your next lesson";
-
       const roadmapTitle = roadmapRow?.title || "your roadmap";
 
-      // Calculate days since last visit
-      const lastVisit = new Date(row.last_visit);
-      const msAway = today.getTime() - lastVisit.getTime();
-      const daysAway = Math.floor(msAway / (1000 * 60 * 60 * 24));
+      const nextTopic =
+        roadmapRow?.data?.months?.[(row.current_month || 1) - 1]?.weeks?.[
+          (row.current_week || 1) - 1
+        ]?.goal || "your next lesson";
 
-      // ── Inactivity check-in ──
-      if (checkinEnabled && daysAway >= 2 && daysAway < 14) {
-        // Don't spam — send at useful intervals while the user is away.
-        const shouldSend = daysAway === 2 || daysAway === 3 || daysAway === 7 || daysAway === 10;
-        if (shouldSend) {
-          await sendEmail(EMAILJS_CHECKIN, {
-            to_name: userName,
-            to_email: userEmail,
-            next_topic: nextTopic,
-            days_away: daysAway,
-            app_url: "https://velorn.vercel.app"
-          });
+      if (!row.last_visit) continue;
+
+      const lastVisit = new Date(row.last_visit);
+      const daysAway = Math.floor(
+        (today.getTime() - lastVisit.getTime()) /
+          (1000 * 60 * 60 * 24)
+      );
+
+      console.log(`${userEmail} | daysAway=${daysAway}`);
+
+      // Send one inactivity email per day after 2 inactive days.
+      if (
+        checkinEnabled &&
+        daysAway >= 2 &&
+        prefs?.checkin_last_sent_on !== todayStr
+      ) {
+        const sent = await sendEmail(EMAILJS_CHECKIN, {
+          to_name: userName,
+          to_email: userEmail,
+          next_topic: nextTopic,
+          days_away: daysAway,
+          app_url: "https://velorn.vercel.app",
+        });
+
+        if (sent) {
           checkinSent++;
+          await supabase
+            .from("email_preferences")
+            .update({ checkin_last_sent_on: todayStr, updated_at: new Date().toISOString() })
+            .eq("user_id", row.user_id);
         }
       }
 
-      // ── Weekly progress email (every Monday) ──
-      if (weeklyEnabled && dayOfWeek === 1 && daysAway < 3) {
-        // Only send to active users (visited in last 3 days)
-        await sendEmail(EMAILJS_WEEKLY, {
+      // Weekly email every Monday
+      if (
+        weeklyEnabled &&
+        dayOfWeek === 1 &&
+        daysAway < 3 &&
+        prefs?.weekly_last_sent_on !== todayStr
+      ) {
+        const sent = await sendEmail(EMAILJS_WEEKLY, {
           to_name: userName,
           to_email: userEmail,
           roadmap_title: roadmapTitle,
-          current_day: row.current_week ? (row.current_week - 1) * 7 + 1 : 1,
+          current_day: row.current_day || 1,
           next_topic: nextTopic,
           streak: row.streak || 0,
-          app_url: "https://velorn.vercel.app"
+          app_url: "https://velorn.vercel.app",
         });
-        weeklySent++;
+
+        if (sent) {
+          weeklySent++;
+          await supabase
+            .from("email_preferences")
+            .update({ weekly_last_sent_on: todayStr, updated_at: new Date().toISOString() })
+            .eq("user_id", row.user_id);
+        }
       }
     }
 
-    console.log(`✅ Reminders sent: ${checkinSent} check-ins, ${weeklySent} weekly`);
-
-    return new Response(
-      JSON.stringify({ success: true, checkinSent, weeklySent }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    console.log(
+      `Reminders sent: ${checkinSent} check-ins, ${weeklySent} weekly`
     );
 
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("send-reminders error:", msg);
     return new Response(
-      JSON.stringify({ error: msg }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
+      JSON.stringify({
+        success: true,
+        checkinSent,
+        weeklySent,
+      }),
+      {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  } catch (err) {
+    console.error("FULL ERROR:", err);
+
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: String(err),
+      }),
+      {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
     );
   }
 });
 
-// Helper to call EmailJS REST API (works from server-side)
-async function sendEmail(templateId: string, params: Record<string, unknown>) {
-  const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      service_id: "service_az5xx88",
-      template_id: templateId,
-      user_id: "_22wrLmwQJNVFd-pa",
-      template_params: params,
-    }),
-  });
+async function sendEmail(
+  templateId: string,
+  params: Record<string, unknown>
+) {
+  const res = await fetch(
+    "https://api.emailjs.com/api/v1.0/email/send",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        service_id: EMAILJS_SERVICE,
+        template_id: templateId,
+        user_id: EMAILJS_PUBLIC_KEY,
+        template_params: params,
+      }),
+    }
+  );
+
   if (!res.ok) {
-    console.error(`EmailJS error: ${res.status} ${await res.text()}`);
+    console.error(
+      `EmailJS error: ${res.status} ${await res.text()}`
+    );
   }
+
   return res.ok;
 }

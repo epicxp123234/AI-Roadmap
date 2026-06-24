@@ -2,6 +2,8 @@ create table if not exists public.email_preferences (
   user_id uuid primary key references auth.users(id) on delete cascade,
   weekly_enabled boolean not null default false,
   checkin_enabled boolean not null default false,
+  checkin_last_sent_on date,
+  weekly_last_sent_on date,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
