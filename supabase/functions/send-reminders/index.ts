@@ -47,8 +47,6 @@ Deno.serve(async (req: Request) => {
 
     for (const row of allProgress || []) {
       const prefs = prefsByUser.get(row.user_id);
-      const weeklyEnabled = prefs?.weekly_enabled === true;
-      const checkinEnabled = prefs?.checkin_enabled === true;
 
       const { data: userData, error: userError } =
         await supabase.auth.admin.getUserById(row.user_id);
@@ -86,10 +84,9 @@ Deno.serve(async (req: Request) => {
 
       console.log(`${userEmail} | daysAway=${daysAway}`);
 
-      // Send one inactivity email per day after 2 inactive days.
+      // Send one inactivity email per day after at least 1 full inactive day.
       if (
-        checkinEnabled &&
-        daysAway >= 2 &&
+        daysAway >= 1 &&
         prefs?.checkin_last_sent_on !== todayStr
       ) {
         const sent = await sendEmail(EMAILJS_CHECKIN, {
@@ -104,14 +101,18 @@ Deno.serve(async (req: Request) => {
           checkinSent++;
           await supabase
             .from("email_preferences")
-            .update({ checkin_last_sent_on: todayStr, updated_at: new Date().toISOString() })
-            .eq("user_id", row.user_id);
+            .upsert({
+              user_id: row.user_id,
+              weekly_enabled: true,
+              checkin_enabled: true,
+              checkin_last_sent_on: todayStr,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: "user_id" });
         }
       }
 
       // Weekly email every Monday
       if (
-        weeklyEnabled &&
         dayOfWeek === 1 &&
         daysAway < 3 &&
         prefs?.weekly_last_sent_on !== todayStr
@@ -130,8 +131,13 @@ Deno.serve(async (req: Request) => {
           weeklySent++;
           await supabase
             .from("email_preferences")
-            .update({ weekly_last_sent_on: todayStr, updated_at: new Date().toISOString() })
-            .eq("user_id", row.user_id);
+            .upsert({
+              user_id: row.user_id,
+              weekly_enabled: true,
+              checkin_enabled: true,
+              weekly_last_sent_on: todayStr,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: "user_id" });
         }
       }
     }

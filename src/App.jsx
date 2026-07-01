@@ -7,33 +7,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: "velorn-auth" }
 });
 
-const EMAIL_PREF_DEFAULTS = { weekly: false, checkin: false };
 const LANDING_EXAMPLES = ["Chess","Web Development","Digital Art","Entrepreneurship","Music Production","Graphic Design"];
-
-function emailPrefKey(userId) {
-  return userId ? `velorn_email_prefs_${userId}` : "velorn_email_prefs";
-}
-
-function getLocalEmailPrefs(userId) {
-  try {
-    const saved = localStorage.getItem(emailPrefKey(userId));
-    if (saved) return { ...EMAIL_PREF_DEFAULTS, ...JSON.parse(saved) };
-    return {
-      weekly: localStorage.getItem("velorn_weekly_email") === "true",
-      checkin: localStorage.getItem("velorn_checkin_email") === "true",
-    };
-  } catch { return EMAIL_PREF_DEFAULTS; }
-}
-
-function setLocalEmailPrefs(userId, prefs) {
-  try {
-    localStorage.setItem(emailPrefKey(userId), JSON.stringify({ ...EMAIL_PREF_DEFAULTS, ...prefs }));
-    localStorage.setItem("velorn_weekly_email", prefs.weekly ? "true" : "false");
-    localStorage.setItem("velorn_checkin_email", prefs.checkin ? "true" : "false");
-  } catch {
-    // localStorage can be unavailable in private or restricted browser contexts.
-  }
-}
 
 function saveKnownDeviceUser(authUser, profile) {
   try {
@@ -67,36 +41,6 @@ async function askClaude(messages) {
 
 async function getProfile(userId) { const { data } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle(); return data; }
 async function upsertProfile(userId, fields) { await supabase.from("profiles").upsert({ id: userId, ...fields }); }
-async function getEmailPrefs(userId) {
-  const localPrefs = getLocalEmailPrefs(userId);
-  if (!userId) return localPrefs;
-  try {
-    const { data, error } = await supabase
-      .from("email_preferences")
-      .select("weekly_enabled, checkin_enabled")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (error) throw error;
-    if (!data) return localPrefs;
-    const prefs = { weekly: !!data.weekly_enabled, checkin: !!data.checkin_enabled };
-    setLocalEmailPrefs(userId, prefs);
-    return prefs;
-  } catch (e) {
-    console.warn("Email preferences fell back to this device:", e);
-    return localPrefs;
-  }
-}
-async function upsertEmailPrefs(userId, prefs) {
-  setLocalEmailPrefs(userId, prefs);
-  if (!userId) return;
-  const { error } = await supabase.from("email_preferences").upsert({
-    user_id: userId,
-    weekly_enabled: !!prefs.weekly,
-    checkin_enabled: !!prefs.checkin,
-    updated_at: new Date().toISOString(),
-  }, { onConflict: "user_id" });
-  if (error) throw error;
-}
 async function getRoadmap(userId) { const { data } = await supabase.from("roadmaps").select("*").eq("user_id", userId).maybeSingle(); return data; }
 async function upsertRoadmap(userId, roadmapData, meta = {}) { await supabase.from("roadmaps").upsert({ user_id: userId, title: roadmapData.title, data: roadmapData, ...meta }); }
 async function getProgress(userId) {
@@ -105,6 +49,7 @@ async function getProgress(userId) {
   return data;
 }
 async function upsertProgress(userId, fields) { await supabase.from("progress").upsert({ user_id: userId, ...fields, updated_at: new Date().toISOString() }, { onConflict: "user_id" }); }
+function initialProgressFields() { return { current_month:1, current_week:1, current_day:1, streak:0, completed_days:[], last_visit:new Date().toISOString().slice(0,10) }; }
 async function saveTaskSubmission(userId, data) { await supabase.from("task_submissions").upsert({ user_id: userId, week_key: data.weekKey, career: data.career, task_title: data.taskTitle, answers: data.answers, feedback: data.feedback, submitted_at: new Date().toISOString() }, { onConflict: "user_id,week_key" }); }
 async function getCachedLectures(userId, key) { const { data } = await supabase.from("lecture_cache").select("lectures").eq("user_id", userId).eq("roadmap_key", key).maybeSingle(); return data?.lectures || null; }
 async function saveCachedLectures(userId, key, lectures) { await supabase.from("lecture_cache").upsert({ user_id: userId, roadmap_key: key, lectures }, { onConflict: "user_id,roadmap_key" }); }
@@ -891,38 +836,7 @@ const DEMO_ROADMAP={title:"Entrepreneurship — Demo Roadmap",months:Array.from(
 const DEMO_PROGRESS={currentMonth:1,currentWeek:1,currentDay:1,streak:3,completedDays:["m1w1d1","m1w1d2","m1w1d3"]};
 
 // ── Email Settings Modal ───────────────────────────────────────────────────
-function EmailSettingsModal({ onClose, userId, userEmail }) {
-  const [prefs, setPrefs] = useState(getLocalEmailPrefs(userId));
-  const [saved, setSaved] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    let alive = true;
-    getEmailPrefs(userId).then(next => { if (alive) setPrefs(next); });
-    return () => { alive = false; };
-  }, [userId]);
-  const toggle = async (key) => {
-    const next = { ...prefs, [key]: !prefs[key] };
-    setPrefs(next);
-    setError("");
-    setSaving(true);
-    try { await upsertEmailPrefs(userId, next); }
-    catch { setError("Could not save to your account. It is saved on this device for now."); }
-    finally { setSaving(false); }
-  };
-  const handleSave = async () => {
-    setError("");
-    setSaving(true);
-    try {
-      await upsertEmailPrefs(userId, prefs);
-      setSaved(true);
-      setTimeout(() => { setSaved(false); onClose(); }, 900);
-    } catch {
-      setError("Could not save to your account. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
+function EmailSettingsModal({ onClose, userEmail }) {
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:20,backdropFilter:"blur(8px)"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div className="card card-p-lg" style={{width:"100%",maxWidth:420}}>
@@ -931,16 +845,14 @@ function EmailSettingsModal({ onClose, userId, userEmail }) {
           <button className="btn btn-ghost btn-icon" onClick={onClose}><Icon.X/></button>
         </div>
         <p style={{fontSize:12,color:"var(--muted)",marginBottom:24,fontFamily:"var(--font-mono)"}}>Sent to {userEmail}</p>
-        {error&&<div style={{marginBottom:12,padding:"8px 12px",background:"var(--ember-light)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:6,fontSize:12,color:"var(--ember)"}}>{error}</div>}
         <div className="toggle-row">
-          <div><p style={{fontSize:14,fontWeight:500,color:"var(--ink)",marginBottom:3}}>Weekly progress update</p><p style={{fontSize:12,color:"var(--muted)"}}>Every Monday — your streak, next topic, and progress</p></div>
-          <label className="toggle"><input type="checkbox" checked={prefs.weekly} onChange={()=>toggle("weekly")} disabled={saving}/><span className="toggle-slider"/></label>
+          <div><p style={{fontSize:14,fontWeight:500,color:"var(--ink)",marginBottom:3}}>Automatic activity emails</p><p style={{fontSize:12,color:"var(--muted)"}}>The countdown starts when an account is created or a user signs in.</p></div>
+          <span className="badge badge-green">Active</span>
         </div>
         <div className="toggle-row">
-          <div><p style={{fontSize:14,fontWeight:500,color:"var(--ink)",marginBottom:3}}>Professor Max check-in</p><p style={{fontSize:12,color:"var(--muted)"}}>If you miss 2 days — a personal nudge to come back</p></div>
-          <label className="toggle"><input type="checkbox" checked={prefs.checkin} onChange={()=>toggle("checkin")} disabled={saving}/><span className="toggle-slider"/></label>
+          <div><p style={{fontSize:14,fontWeight:500,color:"var(--ink)",marginBottom:3}}>Daily inactivity check-ins</p><p style={{fontSize:12,color:"var(--muted)"}}>After 1 full inactive day, EmailJS sends one reminder per day until the user returns.</p></div>
         </div>
-        <button className="btn btn-primary" style={{width:"100%",justifyContent:"center",marginTop:24}} onClick={handleSave} disabled={saving}>{saving ? "Saving..." : saved ? "Saved!" : "Save Preferences"}</button>
+        <button className="btn btn-primary" style={{width:"100%",justifyContent:"center",marginTop:24}} onClick={onClose}>Done</button>
       </div>
     </div>
   );
@@ -1085,7 +997,7 @@ function Auth({ onAuth }) {
       if(!form.name||!form.age||!form.grade||!form.email||!form.password){setErr("All fields required.");setLoading(false);return;}
       const{data,error}=await supabase.auth.signUp({email:form.email,password:form.password,options:{data:{full_name:form.name}}});
       if(error){setErr(error.message);setLoading(false);return;}
-      if(data.user){const prof={full_name:form.name,age:form.age,grade:form.grade};await upsertProfile(data.user.id,{full_name:form.name,age:parseInt(form.age),grade:form.grade});saveKnownDeviceUser(data.user,prof);onAuth(data.user,prof,false);}
+      if(data.user){const prof={full_name:form.name,age:form.age,grade:form.grade};await upsertProfile(data.user.id,{full_name:form.name,age:parseInt(form.age),grade:form.grade});await upsertProgress(data.user.id,initialProgressFields());saveKnownDeviceUser(data.user,prof);onAuth(data.user,prof,false);}
     }else{
       const{data,error}=await supabase.auth.signInWithPassword({email:form.email,password:form.password});
       if(error){setErr("Invalid email or password.");setLoading(false);return;}
@@ -1662,19 +1574,20 @@ export default function App() {
     saveKnownDeviceUser(authUser, prof);
     const rm=await getRoadmap(authUser.id);
     const pg=await getProgress(authUser.id);
+    const today=new Date().toISOString().slice(0,10);
 
     if(rm?.data){
       setRoadmap(rm.data);
       const ap=dbToProgress(pg);setProgress(ap);
-      const today=new Date().toISOString().slice(0,10);
       const lv=pg?.last_visit;
       if(lv&&lv!==today){
         const yesterday=new Date(Date.now()-86400000).toISOString().slice(0,10);
         if(lv!==yesterday){setStreakAlert("lost");const rp={...ap,streak:0};setProgress(rp);await upsertProgress(authUser.id,{...progressToDb(rp),streak:0});}
       }
-      await upsertProgress(authUser.id,{last_visit:today});
+      await upsertProgress(authUser.id,{...progressToDb(ap),last_visit:today});
       setPage("dashboard");
     }else{
+      await upsertProgress(authUser.id,{...initialProgressFields(),last_visit:today});
       if(!prof&&authUser.user_metadata?.full_name){await upsertProfile(authUser.id,{full_name:authUser.user_metadata.full_name,age:null,grade:null});setProfile({full_name:authUser.user_metadata.full_name});}
       setPage("onboard");
     }
