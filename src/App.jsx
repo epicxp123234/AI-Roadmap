@@ -8,6 +8,59 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON, {
 });
 
 const LANDING_EXAMPLES = ["Chess","Web Development","Digital Art","Entrepreneurship","Music Production","Graphic Design"];
+const SUGGESTED_TRACKS = [
+  {
+    id: "python",
+    title: "Python",
+    topic: "Python Programming",
+    level: "Beginner",
+    goal: "Build projects",
+    accent: "var(--accent2)",
+    summary: "Start with syntax, control flow, functions, OOP, and small real projects.",
+    sequence: [
+      "Variables and data types","Strings and numbers","Lists, tuples, and dictionaries","Conditionals and boolean logic",
+      "Loops and iteration","Functions and scope","Modules and imports","Reading and writing files",
+      "Errors and debugging","Object-oriented programming","Classes and objects","Working with APIs",
+      "Virtual environments and packages","Data handling with CSV and JSON","Automation scripts","Testing basics",
+      "Command-line programs","Web basics with Python","Databases and persistence","Project structure",
+      "Capstone planning","Build a useful Python tool","Improve and refactor the project","Publish and present your work"
+    ]
+  },
+  {
+    id: "chess",
+    title: "Chess",
+    topic: "Chess",
+    level: "Beginner",
+    goal: "Strong foundation",
+    accent: "var(--gold)",
+    summary: "Learn board vision, tactics, openings, middlegames, endgames, and game review.",
+    sequence: [
+      "Board, pieces, and legal moves","Check, checkmate, and stalemate","Piece value and trades","Opening principles",
+      "Basic tactics: forks and pins","Skewers, discovered attacks, and double attacks","King safety and castling","Development and center control",
+      "Pawn structure basics","Planning in the middlegame","Attacking patterns","Defensive thinking",
+      "Endgame king activity","Basic pawn endings","Rook endgame ideas","Checkmate patterns",
+      "Calculation habits","Blunder checks","Analyzing your games","Building an opening repertoire",
+      "Time management","Tournament mindset","Solving puzzle sets","Full game review and improvement plan"
+    ]
+  },
+  {
+    id: "business-trading",
+    title: "Business/Trading",
+    topic: "Business and Trading Fundamentals",
+    level: "Beginner",
+    goal: "Strong foundation",
+    accent: "var(--emerald)",
+    summary: "Build business basics, market thinking, risk control, charts, and disciplined decisions.",
+    sequence: [
+      "Business models and value creation","Customers, problems, and offers","Market research basics","Revenue, costs, and profit",
+      "Pricing and positioning","Sales funnels and marketing channels","Cash flow and budgeting","Lean experiments",
+      "Markets, assets, and exchanges","Supply, demand, and liquidity","Candlesticks and chart basics","Trends, ranges, and support/resistance",
+      "Risk management and position sizing","Trading psychology","Backtesting and journaling","News, catalysts, and macro basics",
+      "Building a simple strategy","Paper trading rules","Reviewing wins and losses","Avoiding common trading mistakes",
+      "Business growth metrics","Creating a small business plan","Creating a trading plan","Capstone: pitch and risk-managed strategy"
+    ]
+  }
+];
 
 function saveKnownDeviceUser(authUser, profile) {
   try {
@@ -433,6 +486,11 @@ const css = `
   .mcq-option.wrong{border-color:var(--ember);background:var(--ember-light);color:var(--ember);}
   .btn-google{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:10px 18px;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--r);font-family:var(--font);font-size:13px;font-weight:500;color:var(--ink2);cursor:pointer;transition:all 0.15s;}
   .btn-google:hover{background:var(--surface3);border-color:var(--border3);color:var(--ink);}
+  .quick-track-card{display:flex;flex-direction:column;gap:5px;text-align:left;padding:12px;border-radius:8px;border:1px solid var(--border);border-left:2px solid var(--track-accent);background:var(--surface);color:var(--ink);font-family:var(--font);cursor:pointer;transition:all 0.18s;min-height:118px;}
+  .quick-track-card:hover{transform:translateY(-1px);background:var(--surface2);border-color:var(--border2);}
+  .quick-track-card strong{font-size:14px;font-weight:600;line-height:1.25;}
+  .quick-track-card span:last-child{font-size:11px;line-height:1.5;color:var(--muted);}
+  .quick-track-label{font-family:var(--font-mono);font-size:9px!important;letter-spacing:0.12em;text-transform:uppercase;color:var(--track-accent)!important;}
   .demo-banner{background:var(--surface);border-bottom:1px solid var(--border);padding:9px 24px;display:flex;align-items:center;justify-content:center;gap:14px;font-size:12px;color:var(--ink2);position:fixed;top:60px;left:0;right:0;z-index:150;}
   .section-label{font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:12px;}
   .section-label::after{content:'';flex:1;height:1px;background:var(--border);}
@@ -503,6 +561,8 @@ const css = `
     .hero-layout{flex-direction:column!important;text-align:center;}
     .hero-text{max-width:100%!important;}
     .hero-brain{width:260px!important;height:260px!important;margin:0 auto;}
+    .quick-track-card{min-height:auto;}
+    .hero-text > div[style*="repeat(3,1fr)"]{grid-template-columns:1fr!important;}
     .features-grid{grid-template-columns:1fr!important;}
     .stats-grid{grid-template-columns:repeat(2,1fr)!important;}
     .learn-layout{grid-template-columns:1fr!important;}
@@ -824,6 +884,25 @@ Respond as Pip now:`;
 
 function buildFallback(form) {
   const career=form.career||"your chosen field"; const lc=career.toLowerCase();
+  const preset=SUGGESTED_TRACKS.find(t=>t.id===form.trackId||t.topic.toLowerCase()===lc||t.title.toLowerCase()===lc);
+  if(preset){
+    const months=Array.from({length:6},(_,mi)=>{
+      const topics=preset.sequence.slice(mi*4,mi*4+4);
+      const theme=topics[0]?.replace(/^(Basic |Building |Creating )/,"")||`${preset.title} Foundations`;
+      return {
+        month: mi+1,
+        theme,
+        focus: `Month ${mi+1}: ${theme}`,
+        weeks: topics.map((topic,wi)=>({
+          week: wi+1,
+          goal: topic,
+          days: [1,2,3,4,5,6,7].map(di=>({day:di,task:di===7?`Review ${topic}`:`${topic}: practice step ${di}`})),
+          testTopic: topic
+        }))
+      };
+    });
+    return {title:`6-Month ${preset.topic} Roadmap`,trackId:preset.id,months};
+  }
   const careerThemes={entrepreneur:["Business Foundations","Market Research","Building Your Product","Marketing & Sales","Finance & Operations","Scaling & Growth"],coding:["Programming Basics","Data Structures","Web Development","Databases & APIs","Projects & Portfolio","Job Preparation"],chess:["Chess Basics","Tactics & Puzzles","Opening Principles","Middlegame Strategy","Endgame Mastery","Tournament Preparation"],art:["Drawing Fundamentals","Color Theory","Digital Art","Illustration","Style Development","Portfolio & Career"],music:["Music Theory Basics","Instrument Fundamentals","Scales & Chords","Composition","Production","Performance & Career"]};
   let themes=null; for(const [k,v] of Object.entries(careerThemes)){if(lc.includes(k)){themes=v;break;}}
   if(!themes)themes=[`${career} Fundamentals`,`Core ${career} Skills`,`${career} in Practice`,`Advanced ${career} Concepts`,`Real-world ${career} Projects`,`${career} Mastery & Career`];
@@ -861,12 +940,12 @@ function EmailSettingsModal({ onClose, userEmail }) {
 // ── Nav ────────────────────────────────────────────────────────────────────
 function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, isDemo, onSignUp }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const links = user ? ["dashboard","learn","test"] : [];
+  const links = user ? ["dashboard","learn","test","onboard"] : [];
   return (
     <>
       <nav className="nav">
         <div className="nav-logo"><div className="nav-logo-dot"/><span>Velorn</span></div>
-        {user && (<div className="nav-links">{links.map(p=>(<button key={p} onClick={()=>{onNav(p);setMobileOpen(false);}} className={`nav-link ${page===p?"active":""}`}>{p==="learn"?"Learn":p==="test"?"Test":"Dashboard"}</button>))}</div>)}
+        {user && (<div className="nav-links">{links.map(p=>(<button key={p} onClick={()=>{onNav(p);setMobileOpen(false);}} className={`nav-link ${page===p?"active":""}`}>{p==="learn"?"Learn":p==="test"?"Test":p==="onboard"?"New Topic":"Dashboard"}</button>))}</div>)}
         <div className="row gap-8">
           {user && !isDemo && <button onClick={onOpenEmailSettings} className="btn btn-ghost btn-sm row gap-6"><Icon.Bell/></button>}
           {user && (isDemo ? <button className="btn btn-primary btn-sm" onClick={onSignUp}>Sign Up</button> : <button className="btn btn-ghost btn-sm btn-icon" onClick={onLogout}><Icon.LogOut/></button>)}
@@ -876,7 +955,7 @@ function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, isDemo, onSignU
       </nav>
       {user && (
         <div className={`mobile-nav ${mobileOpen?"open":""}`}>
-          {links.map(p=>(<button key={p} onClick={()=>{onNav(p);setMobileOpen(false);}} className={`mobile-nav-link ${page===p?"active":""}`}>{p==="learn"?"Learn":p==="test"?"Test":"Dashboard"}</button>))}
+          {links.map(p=>(<button key={p} onClick={()=>{onNav(p);setMobileOpen(false);}} className={`mobile-nav-link ${page===p?"active":""}`}>{p==="learn"?"Learn":p==="test"?"Test":p==="onboard"?"New Topic":"Dashboard"}</button>))}
           <button className="mobile-nav-link" onClick={()=>{onOpenEmailSettings();setMobileOpen(false);}}>Reminders</button>
           <button className="mobile-nav-link" style={{color:"var(--ember)"}} onClick={()=>{onLogout();setMobileOpen(false);}}>Sign Out</button>
         </div>
@@ -886,7 +965,7 @@ function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, isDemo, onSignU
 }
 
 // ── Landing ────────────────────────────────────────────────────────────────
-function Landing({ onStart, onDemo }) {
+function Landing({ onStart, onDemo, onTrack }) {
   const [typed, setTyped] = useState("");
   const [focused, setFocused] = useState(false);
   const [exIdx, setExIdx] = useState(0);
@@ -911,10 +990,19 @@ function Landing({ onStart, onDemo }) {
               </p>
               <div style={{marginBottom:20}}>
                 <div style={{display:"flex",alignItems:"center",background:"var(--surface)",border:`1px solid ${focused?"var(--accent2)":"var(--border2)"}`,borderRadius:10,overflow:"hidden",boxShadow:focused?"0 0 0 3px rgba(167,139,250,0.1)":"0 8px 32px rgba(0,0,0,0.3)",transition:"all 0.2s",maxWidth:500}}>
-                  <input value={typed} onChange={e=>setTyped(e.target.value)} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} placeholder={`e.g. ${LANDING_EXAMPLES[exIdx]}`} style={{flex:1,padding:"13px 18px",border:"none",outline:"none",fontSize:14,fontFamily:"var(--font)",background:"transparent",color:"var(--ink)"}} onKeyDown={e=>e.key==="Enter"&&onStart()}/>
-                  <button className="btn btn-primary" style={{margin:5,borderRadius:7,padding:"9px 18px",flexShrink:0,fontSize:13}} onClick={onStart}>Build Roadmap →</button>
+                  <input value={typed} onChange={e=>setTyped(e.target.value)} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} placeholder={`e.g. ${LANDING_EXAMPLES[exIdx]}`} style={{flex:1,padding:"13px 18px",border:"none",outline:"none",fontSize:14,fontFamily:"var(--font)",background:"transparent",color:"var(--ink)"}} onKeyDown={e=>e.key==="Enter"&&onStart(typed)}/>
+                  <button className="btn btn-primary" style={{margin:5,borderRadius:7,padding:"9px 18px",flexShrink:0,fontSize:13}} onClick={()=>onStart(typed)}>Build Roadmap →</button>
                 </div>
                 <p style={{fontSize:11,color:"var(--subtle)",marginTop:8,fontFamily:"var(--font-mono)"}}>No credit card · 30 seconds to set up</p>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,maxWidth:500,marginBottom:18}}>
+                {SUGGESTED_TRACKS.map(track=>(
+                  <button key={track.id} onClick={()=>onTrack(track)} className="quick-track-card" style={{"--track-accent":track.accent}}>
+                    <span className="quick-track-label">Quick start</span>
+                    <strong>{track.title}</strong>
+                    <span>{track.sequence.slice(0,4).join(" -> ")}</span>
+                  </button>
+                ))}
               </div>
               <button className="btn btn-ghost btn-sm row gap-6" onClick={onDemo} style={{color:"var(--muted)",paddingLeft:0}}><Icon.Eye/> See a demo first</button>
               <div style={{marginTop:48,fontFamily:"var(--font-mono)",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",color:"var(--subtle)"}}>Built for ambitious students</div>
@@ -1053,26 +1141,30 @@ function RoadmapLoader() {
   );
 }
 
-function Onboarding({ user, profile, onDone }) {
-  const [form,setForm]=useState({career:"",level:"Beginner",time:"1 hour",goal:"Strong foundation"});
+function Onboarding({ user, profile, onDone, initialTopic = "", initialTrack = null }) {
+  const initialPreset=initialTrack||SUGGESTED_TRACKS.find(t=>t.topic===initialTopic||t.title===initialTopic)||null;
+  const [form,setForm]=useState({career:initialPreset?.topic||initialTopic||"",level:initialPreset?.level||"Beginner",time:"1 hour",goal:initialPreset?.goal||"Strong foundation",trackId:initialPreset?.id||null});
   const [loading,setLoading]=useState(false);
-  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const set=(k,v)=>setForm(f=>({...f,[k]:v,trackId:k==="career"?null:f.trackId}));
+  const applyTrack=(track)=>setForm(f=>({...f,career:track.topic,level:track.level,time:f.time,goal:track.goal,trackId:track.id}));
   const generate=async()=>{
     if(!form.career.trim()){alert("Please enter what you want to learn.");return;}
     setLoading(true);
     const name=profile?.full_name||user?.user_metadata?.full_name||user?.email||"Student";
     const age=profile?.age||"15";const grade=profile?.grade||"High School";
-    const prompt=`Create a 6-month learning roadmap. Student: Name ${name}, Age ${age}, Grade ${grade}, Topic "${form.career}", Level ${form.level}, Time ${form.time}, Goal ${form.goal}.\nReturn ONLY valid JSON no markdown:\n{"title":"6-Month ${form.career} Roadmap","months":[{"month":1,"theme":"Theme","focus":"Focus","weeks":[{"week":1,"goal":"Goal","days":[{"day":1,"task":"Task"},{"day":2,"task":"Task"},{"day":3,"task":"Task"},{"day":4,"task":"Task"},{"day":5,"task":"Task"},{"day":6,"task":"Project"},{"day":7,"task":"Review"}],"testTopic":"Topic"}]}]}\nGenerate ALL 6 months ALL 4 weeks. Every task specific to "${form.career}".`;
+    const preset=SUGGESTED_TRACKS.find(t=>t.id===form.trackId);
+    const sequenceText=preset?`\nUse this suggested quick-start sequence as the backbone, one item per week in order. Do not limit the app to this track; this is only the current roadmap seed:\n${preset.sequence.map((topic,i)=>`${i+1}. ${topic}`).join("\n")}`:"";
+    const prompt=`Create a 6-month learning roadmap. Student: Name ${name}, Age ${age}, Grade ${grade}, Topic "${form.career}", Level ${form.level}, Time ${form.time}, Goal ${form.goal}.${sequenceText}\nReturn ONLY valid JSON no markdown:\n{"title":"6-Month ${form.career} Roadmap","months":[{"month":1,"theme":"Theme","focus":"Focus","weeks":[{"week":1,"goal":"Goal","days":[{"day":1,"task":"Task"},{"day":2,"task":"Task"},{"day":3,"task":"Task"},{"day":4,"task":"Task"},{"day":5,"task":"Task"},{"day":6,"task":"Project"},{"day":7,"task":"Review"}],"testTopic":"Topic"}]}]}\nGenerate ALL 6 months ALL 4 weeks. Every task specific to "${form.career}".`;
     try {
       const raw=await askClaude([{role:"user",content:prompt}]);
       const jsonMatch=raw.match(/\{[\s\S]*\}/);if(!jsonMatch)throw new Error("No JSON");
       const roadmap=JSON.parse(jsonMatch[0]);
-      await upsertRoadmap(user.id,roadmap,{career:form.career,level:form.level,daily_time:form.time,goal:form.goal});
+      await upsertRoadmap(user.id,roadmap,{career:form.career,level:form.level,daily_time:form.time,goal:form.goal,track_id:form.trackId});
       const ip={current_month:1,current_week:1,current_day:1,streak:0,completed_days:[],last_visit:new Date().toISOString().slice(0,10)};
       await upsertProgress(user.id,ip);onDone(roadmap,dbToProgress(ip));
     } catch {
       const fallback=buildFallback(form);
-      await upsertRoadmap(user.id,fallback,{career:form.career,level:form.level,daily_time:form.time,goal:form.goal});
+      await upsertRoadmap(user.id,fallback,{career:form.career,level:form.level,daily_time:form.time,goal:form.goal,track_id:form.trackId});
       const ip={current_month:1,current_week:1,current_day:1,streak:0,completed_days:[],last_visit:new Date().toISOString().slice(0,10)};
       await upsertProgress(user.id,ip);onDone(fallback,dbToProgress(ip));
     }
@@ -1086,10 +1178,19 @@ function Onboarding({ user, profile, onDone }) {
         <div style={{marginBottom:24}}>
           <p style={{fontSize:11,color:"var(--muted)",marginBottom:4,fontFamily:"var(--font-mono)",textTransform:"uppercase",letterSpacing:"0.1em"}}>Welcome, {name}</p>
           <h2 style={{fontFamily:"var(--font-display)",fontSize:28,fontWeight:400,marginBottom:6}}>Set up your learning path</h2>
-          <p style={{fontSize:13,color:"var(--muted)"}}>Tell us what to learn — we'll build your personalized 6-month roadmap.</p>
+          <p style={{fontSize:13,color:"var(--muted)"}}>Type any topic, or use a quick start below. You can switch to a completely different topic anytime.</p>
         </div>
         <div className="stack gap-14">
-          <div className="field"><label className="label">What do you want to learn?</label><input className="input" placeholder="e.g. Chess, Web Development, Digital Art, Entrepreneurship" value={form.career} onChange={e=>set("career",e.target.value)}/></div>
+          <div className="field"><label className="label">What do you want to learn?</label><input className="input" placeholder="e.g. Quantum physics, Guitar, Python, Chess" value={form.career} onChange={e=>set("career",e.target.value)}/></div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+            {SUGGESTED_TRACKS.map(track=>(
+              <button key={track.id} type="button" onClick={()=>applyTrack(track)} className="quick-track-card" style={{"--track-accent":track.accent,borderColor:form.trackId===track.id?"var(--border3)":"var(--border)",background:form.trackId===track.id?"var(--surface2)":"var(--surface)",minHeight:120}}>
+                <span className="quick-track-label">{form.trackId===track.id?"Selected":"Quick start"}</span>
+                <strong>{track.title}</strong>
+                <span>{track.summary}</span>
+              </button>
+            ))}
+          </div>
           <div className="row gap-10">
             <div className="field" style={{flex:1}}><label className="label">Level</label><select className="input" value={form.level} onChange={e=>set("level",e.target.value)}><option>Beginner</option><option>Intermediate</option></select></div>
             <div className="field" style={{flex:1}}><label className="label">Daily Time</label><select className="input" value={form.time} onChange={e=>set("time",e.target.value)}><option>1 hour</option><option>2 hours</option><option>3+ hours</option></select></div>
@@ -1144,6 +1245,7 @@ function Dashboard({ user, roadmap, progress, onUpdateProgress, onNav, isDemo })
         <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
           <button className="btn btn-primary row gap-6" onClick={()=>onNav("learn")}>Start Learning <Icon.ArrowRight/></button>
           <button className="btn btn-secondary" onClick={markDone}>Mark Done</button>
+          {!isDemo&&<button className="btn btn-ghost" onClick={()=>onNav("onboard")}>Start another topic</button>}
         </div>
       </div>
       {week&&(
@@ -1558,6 +1660,8 @@ export default function App() {
   // NEW: welcome screen state
   const[showWelcome,setShowWelcome]=useState(false);
   const[welcomeName,setWelcomeName]=useState("");
+  const[pendingTopic,setPendingTopic]=useState("");
+  const[pendingTrack,setPendingTrack]=useState(null);
 
   useEffect(()=>{if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));},[]);
 
@@ -1603,13 +1707,16 @@ export default function App() {
     }
   };
 
-  const logout=async()=>{await supabase.auth.signOut();setUser(null);setProfile(null);setRoadmap(null);setProgress(null);setPage("landing");};
+  const logout=async()=>{await supabase.auth.signOut();setUser(null);setProfile(null);setRoadmap(null);setProgress(null);setPendingTopic("");setPendingTrack(null);setPage("landing");};
   const startDemo=()=>{setRoadmap(DEMO_ROADMAP);setProgress(DEMO_PROGRESS);setIsDemo(true);setPage("dashboard");};
-  const exitDemo=()=>{setIsDemo(false);setRoadmap(null);setProgress(null);setUser(null);setPage("landing");};
+  const exitDemo=()=>{setIsDemo(false);setRoadmap(null);setProgress(null);setUser(null);setPendingTopic("");setPendingTrack(null);setPage("landing");};
+  const startCustomTopic=(topic="")=>{setPendingTopic(topic.trim());setPendingTrack(null);setPage(user?"onboard":"auth");};
+  const startSuggestedTrack=(track)=>{setPendingTopic(track.topic);setPendingTrack(track);setPage(user?"onboard":"auth");};
 
   // Called when onboarding finishes — show welcome screen first
   const handleOnboardingDone = (rm, pg) => {
     setRoadmap(rm);setProgress(pg);
+    setPendingTopic("");setPendingTrack(null);
     const name = profile?.full_name || user?.user_metadata?.full_name || "there";
     setWelcomeName(name);
     setShowWelcome(true);
@@ -1667,9 +1774,9 @@ export default function App() {
         />
       )}
 
-      {page==="landing"&&<Landing onStart={()=>setPage("auth")} onDemo={startDemo}/>}
+      {page==="landing"&&<Landing onStart={startCustomTopic} onDemo={startDemo} onTrack={startSuggestedTrack}/>}
       {page==="auth"&&<Auth onAuth={onAuth}/>}
-      {page==="onboard"&&user&&<Onboarding user={user} profile={profile} onDone={handleOnboardingDone}/>}
+      {page==="onboard"&&user&&<Onboarding key={`${pendingTopic}-${pendingTrack?.id||"custom"}`} user={user} profile={profile} onDone={handleOnboardingDone} initialTopic={pendingTopic} initialTrack={pendingTrack}/>}
       {page==="dashboard"&&roadmap&&progress&&<Dashboard user={user} roadmap={roadmap} progress={progress} onUpdateProgress={p=>setProgress(p)} onNav={setPage} isDemo={isDemo}/>}
       {page==="learn"&&roadmap&&progress&&<Learn user={user} progress={progress} roadmap={roadmap} onUpdateProgress={p=>setProgress(p)} isDemo={isDemo} onSignUp={()=>{exitDemo();setPage("auth");}}/>}
       {page==="test"&&roadmap&&progress&&<WeeklyTest progress={progress} roadmap={roadmap}/>}
