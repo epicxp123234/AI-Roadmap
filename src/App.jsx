@@ -1272,24 +1272,78 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
   const[dayDone,setDayDone]=useState(false);const[showTask,setShowTask]=useState(false);const[taskSteps,setTaskSteps]=useState({});
   const[taskSubmitted,setTaskSubmitted]=useState(false);const[taskFeedback,setTaskFeedback]=useState("");const[loadingFeedback,setLoadingFeedback]=useState(false);
   const[taskDoubt,setTaskDoubt]=useState("");const[taskDoubtAnswer,setTaskDoubtAnswer]=useState("");const[loadingTaskDoubt,setLoadingTaskDoubt]=useState(false);
-  // NEW STATE
   const[showTeachMe,setShowTeachMe]=useState(false);
+
+  // Validation helper — checks a single lecture object meets minimum depth requirements
+  const isValidLecture = useCallback((l) => {
+    const wc = (s) => (s ? s.trim().split(/\s+/).length : 0);
+    return (
+      wc(l.coreIdea) >= 25 &&
+      wc(l.example) >= 20 &&
+      wc(l.action) >= 10 &&
+      wc(l.mistake) >= 10 &&
+      wc(l.takeaway) >= 8
+    );
+  }, []);
 
   const loadLectures=useCallback(async()=>{
     setLoading(true);
     const cacheKey=`m${currentMonth}w${currentWeek}d${currentDay}`;
-    if(!isDemo&&user?.id){const cached=await getCachedLectures(user.id,cacheKey);if(cached&&cached.length>=3){setLectures(cached);setLoading(false);return;}}
-    const prompt=`You are a world-class mentor teaching a 14-year-old beginner.\nWeek topic: "${weekTopic}"\nSubject: "${roadmap.title}"\nToday is Day ${currentDay} of 7 this week.\nFor Day ${currentDay}, cover sub-topics ${(currentDay-1)*5+1} to ${currentDay*5} of "${weekTopic}". Do NOT repeat previous days.\nGenerate EXACTLY 5 lectures. Return ONLY valid JSON. No markdown, no backticks.\n{"lectures":[{"num":1,"title":"Clear concise title","coreIdea":"2-3 sentences","example":"Real-world example","action":"One task","mistake":"One mistake","takeaway":"One sentence"},{"num":2,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":3,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":4,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":5,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"...","homework":["Task 1","Task 2"]}]}`;
+    if(!isDemo&&user?.id){
+      const cached=await getCachedLectures(user.id,cacheKey);
+      // Only trust cache if it also passes the depth check — prevents old short lectures from sticking around
+      if(cached&&cached.length>=3&&cached.every(isValidLecture)){
+        setLectures(cached);setLoading(false);return;
+      }
+    }
+
+    const prompt=`You are a world-class mentor teaching a 14-year-old beginner.
+Week topic: "${weekTopic}"
+Subject: "${roadmap.title}"
+Today is Day ${currentDay} of 7 this week.
+For Day ${currentDay}, cover sub-topics ${(currentDay-1)*5+1} to ${currentDay*5} of "${weekTopic}". Do NOT repeat previous days.
+
+Generate EXACTLY 5 lectures. For EACH lecture, follow these length rules strictly — do not write short phrases or fragments:
+- title: 3-8 words, specific and descriptive (not generic like "Part 1")
+- coreIdea: 3-4 full sentences clearly explaining the concept, MINIMUM 40 words
+- example: 2-3 sentences with a concrete, specific real-world scenario, MINIMUM 30 words
+- action: 1-2 full sentences describing a specific actionable task the student should do today, MINIMUM 15 words
+- mistake: 1-2 full sentences describing a common mistake AND briefly why it happens, MINIMUM 15 words
+- takeaway: 1 full sentence summarizing the key insight, MINIMUM 12 words
+
+Every field must be complete, well-formed sentences meeting the minimum word counts above. Do not abbreviate or truncate.
+
+Return ONLY valid JSON. No markdown, no backticks, no commentary before or after the JSON.
+{"lectures":[{"num":1,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":2,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":3,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":4,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":5,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"...","homework":["Task 1","Task 2"]}]}`;
+
     let raw="";
     try{raw=await askClaude([{role:"user",content:prompt}]);}catch{raw="";}
+
     if(raw?.trim()){
-      try{let c=raw.trim().replace(/```json|```/gi,"").replace(/,(\s*[}\]])/g,"$1");const m=c.match(/\{[\s\S]*\}/);
-        if(m){const p=JSON.parse(m[0]);const a=p.lectures&&Array.isArray(p.lectures)?p.lectures:[];if(a.length>=3){setLectures(a);if(!isDemo&&user?.id)await saveCachedLectures(user.id,cacheKey,a);setLoading(false);return;}}
+      try{
+        let c=raw.trim().replace(/```json|```/gi,"").replace(/,(\s*[}\]])/g,"$1");
+        const m=c.match(/\{[\s\S]*\}/);
+        if(m){
+          const p=JSON.parse(m[0]);
+          const a=p.lectures&&Array.isArray(p.lectures)?p.lectures:[];
+          // Require BOTH count >=3 AND every lecture to pass depth validation before accepting
+          if(a.length>=3 && a.every(isValidLecture)){
+            setLectures(a);
+            if(!isDemo&&user?.id)await saveCachedLectures(user.id,cacheKey,a);
+            setLoading(false);
+            return;
+          } else if (a.length >= 3) {
+            console.warn("Lectures parsed but failed depth validation — one or more fields too short:", a);
+          }
+        }
       }catch(e){console.warn("Parse failed:",e.message);}
     }
-    setLectures(Array.from({length:5},(_,i)=>({num:i+1,title:`${weekTopic} — Part ${i+1}`,coreIdea:`This covers a key aspect of ${weekTopic}.`,example:`In ${roadmap.title}, this appears when working on real projects.`,action:`Spend 10 minutes applying this today.`,mistake:`Beginners often skip this — don't.`,takeaway:`Mastering this gives you a real edge.`,homework:i===4?["Find a real-world example","Apply today's concepts"]:null})));
+
+    // Fallback — only reached if generation/parsing/validation all failed
+    console.warn("Falling back to generic lecture template for", cacheKey);
+    setLectures(Array.from({length:5},(_,i)=>({num:i+1,title:`${weekTopic} — Part ${i+1}`,coreIdea:`This covers a key aspect of ${weekTopic} that builds directly on what you've learned so far, and it's essential for understanding how the rest of this topic fits together.`,example:`In ${roadmap.title}, this concept appears frequently when working on real projects, especially once you start combining it with other ideas from this week.`,action:`Spend 10-15 minutes today actively practicing this concept with a small example of your own.`,mistake:`Beginners often skip this step or rush through it — don't, because it becomes much harder to fix later once you've built on top of it.`,takeaway:`Mastering this now gives you a real foundation for everything that comes next in ${weekTopic}.`,homework:i===4?["Find a real-world example","Apply today's concepts"]:null})));
     setLoading(false);
-  }, [currentMonth, currentWeek, currentDay, isDemo, user?.id, weekTopic, roadmap.title]);
+  }, [currentMonth, currentWeek, currentDay, isDemo, user?.id, weekTopic, roadmap.title, isValidLecture]);
 
   useEffect(()=>{setLectures(null);setActive(0);setAnswer("");setDayDone(false);setShowTask(false);setTaskSteps({});setTaskSubmitted(false);setTaskFeedback("");loadLectures();},[loadLectures]);
 
