@@ -112,6 +112,11 @@ function dbToProgress(row) {
   return { currentMonth: row.current_month??1, currentWeek: row.current_week??1, currentDay: row.current_day??1, streak: row.streak??0, completedDays: row.completed_days??[], lastVisit: row.last_visit };
 }
 function progressToDb(p) { return { current_month: p.currentMonth, current_week: p.currentWeek, current_day: p.currentDay, streak: p.streak, completed_days: p.completedDays, last_visit: new Date().toISOString().slice(0,10) }; }
+// Stable per-roadmap slug — used to namespace lecture cache & task submissions so switching roadmaps never reads another roadmap's cached data.
+function roadmapSlug(roadmap) {
+  const base = roadmap?.trackId || roadmap?.title || "roadmap";
+  return String(base).toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+}
 
 // ── Icons ──────────────────────────────────────────────────────────────────
 const Icon = {
@@ -1288,7 +1293,7 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
 
   const loadLectures=useCallback(async()=>{
     setLoading(true);
-    const cacheKey=`m${currentMonth}w${currentWeek}d${currentDay}`;
+    const cacheKey=`${roadmapSlug(roadmap)}_m${currentMonth}w${currentWeek}d${currentDay}`;
     if(!isDemo&&user?.id){
       const cached=await getCachedLectures(user.id,cacheKey);
       // Only trust cache if it also passes the depth check — prevents old short lectures from sticking around
@@ -1364,7 +1369,7 @@ Return ONLY valid JSON. No markdown, no backticks, no commentary before or after
     let fb="Good work. Your submission shows clear thinking.";
     try{const res=await askClaude([{role:"user",content:`Student learning "${roadmap.title}" submitted work on "${weekTopic}":\n\n${submission}\n\nGive honest, specific feedback. Around 200 words.`}]);if(res&&res.trim().length>20)fb=res;}catch{fb="Good work. Your submission shows clear thinking.";}
     setTaskFeedback(fb);setTaskSubmitted(true);setLoadingFeedback(false);
-    try{await saveTaskSubmission(user.id,{weekKey:`m${currentMonth}w${currentWeek}d${currentDay}`,career:roadmap.title,taskTitle:getWeeklyTask().title,answers:taskSteps,feedback:fb});}catch{console.warn("Task submission could not be saved.");}
+    try{await saveTaskSubmission(user.id,{weekKey:`${roadmapSlug(roadmap)}_m${currentMonth}w${currentWeek}d${currentDay}`,career:roadmap.title,taskTitle:getWeeklyTask().title,answers:taskSteps,feedback:fb});}catch{console.warn("Task submission could not be saved.");}
   };
 
   const submitTaskDoubt=async()=>{
