@@ -94,6 +94,7 @@ async function askClaude(messages) {
 
 async function getProfile(userId) { const { data } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle(); return data; }
 async function upsertProfile(userId, fields) { await supabase.from("profiles").upsert({ id: userId, ...fields }); }
+async function markFeynmanOnboardingSeen(userId) { await upsertProfile(userId, { has_seen_onboarding: true }); }
 async function getRoadmap(userId) { const { data } = await supabase.from("roadmaps").select("*").eq("user_id", userId).maybeSingle(); return data; }
 async function upsertRoadmap(userId, roadmapData, meta = {}) { await supabase.from("roadmaps").upsert({ user_id: userId, title: roadmapData.title, data: roadmapData, ...meta }); }
 async function getProgress(userId) {
@@ -112,11 +113,6 @@ function dbToProgress(row) {
   return { currentMonth: row.current_month??1, currentWeek: row.current_week??1, currentDay: row.current_day??1, streak: row.streak??0, completedDays: row.completed_days??[], lastVisit: row.last_visit };
 }
 function progressToDb(p) { return { current_month: p.currentMonth, current_week: p.currentWeek, current_day: p.currentDay, streak: p.streak, completed_days: p.completedDays, last_visit: new Date().toISOString().slice(0,10) }; }
-// Stable per-roadmap slug — used to namespace lecture cache & task submissions so switching roadmaps never reads another roadmap's cached data.
-function roadmapSlug(roadmap) {
-  const base = roadmap?.trackId || roadmap?.title || "roadmap";
-  return String(base).toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-}
 
 // ── Icons ──────────────────────────────────────────────────────────────────
 const Icon = {
@@ -524,6 +520,14 @@ const css = `
   .welcome-title{animation:slideUp 0.6s ease 0.4s both;opacity:0;}
   .welcome-sub{animation:slideUp 0.6s ease 0.55s both;opacity:0;}
   .welcome-btn{animation:slideUp 0.6s ease 0.7s both;opacity:0;}
+  .feynman-page{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:96px 24px 56px;background:radial-gradient(ellipse at 50% 0%,rgba(139,92,246,0.14),transparent 62%),var(--bg);}
+  .feynman-card{width:100%;max-width:760px;position:relative;overflow:hidden;}
+  .feynman-card::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 18% 0%,rgba(212,168,83,0.10),transparent 54%);pointer-events:none;}
+  .feynman-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:22px 0 26px;position:relative;z-index:1;}
+  .feynman-step{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;min-height:150px;}
+  .feynman-step-num{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:rgba(167,139,250,0.14);border:1px solid rgba(167,139,250,0.28);color:var(--accent2);font-family:var(--font-mono);font-size:11px;font-weight:600;margin-bottom:12px;}
+  .feynman-step h3{font-family:var(--font);font-size:14px;font-weight:600;margin-bottom:8px;letter-spacing:0;color:var(--ink);}
+  .feynman-step p{font-size:12px;line-height:1.65;color:var(--muted);}
 
   /* ── Professor Joke Sidekick ── */
   .prof-sidekick{position:relative;display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 8px;flex-shrink:0;}
@@ -567,6 +571,8 @@ const css = `
     .hero-text{max-width:100%!important;}
     .hero-brain{width:260px!important;height:260px!important;margin:0 auto;}
     .quick-track-card{min-height:auto;}
+    .feynman-steps{grid-template-columns:1fr!important;}
+    .feynman-step{min-height:auto;}
     .hero-text > div[style*="repeat(3,1fr)"]{grid-template-columns:1fr!important;}
     .features-grid{grid-template-columns:1fr!important;}
     .stats-grid{grid-template-columns:repeat(2,1fr)!important;}
@@ -661,6 +667,51 @@ function WelcomeScreen({ name, onDone }) {
   );
 }
 
+function FeynmanIntro({ name, onDone }) {
+  const [saving, setSaving] = useState(false);
+  const firstName = name?.split(" ")[0] || "there";
+  const steps = [
+    { title: "Learn it", body: "Professor Max gives you a focused lecture on whatever you picked." },
+    { title: "Explain it", body: "Then you teach it back in your own words. Fancy fog is politely not accepted." },
+    { title: "Patch the gaps", body: "The AI student points at vague bits until your explanation is simple enough to survive daylight." },
+  ];
+  const finish = async () => {
+    if (saving) return;
+    setSaving(true);
+    await onDone();
+    setSaving(false);
+  };
+  return (
+    <div className="feynman-page page">
+      <div className="card card-p-lg feynman-card">
+        <div style={{position:"relative",zIndex:1}}>
+          <div className="row gap-8" style={{marginBottom:14,flexWrap:"wrap"}}>
+            <span className="badge badge-blue">How Velorn works</span>
+            <span className="badge badge-neutral">30-second briefing</span>
+          </div>
+          <h1 style={{fontFamily:"var(--font-display)",fontSize:"clamp(32px,5vw,52px)",fontWeight:300,lineHeight:1.08,marginBottom:12}}>
+            Hey {firstName}, meet the Feynman trick.
+          </h1>
+          <p style={{fontSize:15,color:"var(--ink2)",lineHeight:1.75,maxWidth:620}}>
+            You do not really know a thing until you can explain it simply. If your explanation turns into academic soup, congratulations: we found the exact spot to fix.
+          </p>
+          <div className="feynman-steps">
+            {steps.map((step, i) => (
+              <div key={step.title} className="feynman-step">
+                <div className="feynman-step-num">0{i + 1}</div>
+                <h3>{step.title}</h3>
+                <p>{step.body}</p>
+              </div>
+            ))}
+          </div>
+          <button className="btn btn-primary btn-lg row gap-8" style={{justifyContent:"center",width:"100%"}} onClick={finish} disabled={saving}>
+            {saving ? <><Icon.Loader/> Saving</> : <>Got it, let's start learning <Icon.ArrowRight/></>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 // ── Professor Joke Sidekick ────────────────────────────────────────────────
 const PROF_JOKES = [
   "Why do programmers prefer dark mode? Because light attracts bugs! 🐛",
@@ -1090,7 +1141,7 @@ function Auth({ onAuth }) {
       if(!form.name||!form.age||!form.grade||!form.email||!form.password){setErr("All fields required.");setLoading(false);return;}
       const{data,error}=await supabase.auth.signUp({email:form.email,password:form.password,options:{data:{full_name:form.name}}});
       if(error){setErr(error.message);setLoading(false);return;}
-      if(data.user){const prof={full_name:form.name,age:form.age,grade:form.grade};await upsertProfile(data.user.id,{full_name:form.name,age:parseInt(form.age),grade:form.grade});await upsertProgress(data.user.id,initialProgressFields());saveKnownDeviceUser(data.user,prof);onAuth(data.user,prof,false);}
+      if(data.user){const prof={full_name:form.name,age:form.age,grade:form.grade,has_seen_onboarding:false};await upsertProfile(data.user.id,{full_name:form.name,age:parseInt(form.age),grade:form.grade,has_seen_onboarding:false});await upsertProgress(data.user.id,initialProgressFields());saveKnownDeviceUser(data.user,prof);onAuth(data.user,prof,false);}
     }else{
       const{data,error}=await supabase.auth.signInWithPassword({email:form.email,password:form.password});
       if(error){setErr("Invalid email or password.");setLoading(false);return;}
@@ -1277,78 +1328,24 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
   const[dayDone,setDayDone]=useState(false);const[showTask,setShowTask]=useState(false);const[taskSteps,setTaskSteps]=useState({});
   const[taskSubmitted,setTaskSubmitted]=useState(false);const[taskFeedback,setTaskFeedback]=useState("");const[loadingFeedback,setLoadingFeedback]=useState(false);
   const[taskDoubt,setTaskDoubt]=useState("");const[taskDoubtAnswer,setTaskDoubtAnswer]=useState("");const[loadingTaskDoubt,setLoadingTaskDoubt]=useState(false);
+  // NEW STATE
   const[showTeachMe,setShowTeachMe]=useState(false);
-
-  // Validation helper — checks a single lecture object meets minimum depth requirements
-  const isValidLecture = useCallback((l) => {
-    const wc = (s) => (s ? s.trim().split(/\s+/).length : 0);
-    return (
-      wc(l.coreIdea) >= 25 &&
-      wc(l.example) >= 20 &&
-      wc(l.action) >= 10 &&
-      wc(l.mistake) >= 10 &&
-      wc(l.takeaway) >= 8
-    );
-  }, []);
 
   const loadLectures=useCallback(async()=>{
     setLoading(true);
-    const cacheKey=`${roadmapSlug(roadmap)}_m${currentMonth}w${currentWeek}d${currentDay}`;
-    if(!isDemo&&user?.id){
-      const cached=await getCachedLectures(user.id,cacheKey);
-      // Only trust cache if it also passes the depth check — prevents old short lectures from sticking around
-      if(cached&&cached.length>=3&&cached.every(isValidLecture)){
-        setLectures(cached);setLoading(false);return;
-      }
-    }
-
-    const prompt=`You are a world-class mentor teaching a 14-year-old beginner.
-Week topic: "${weekTopic}"
-Subject: "${roadmap.title}"
-Today is Day ${currentDay} of 7 this week.
-For Day ${currentDay}, cover sub-topics ${(currentDay-1)*5+1} to ${currentDay*5} of "${weekTopic}". Do NOT repeat previous days.
-
-Generate EXACTLY 5 lectures. For EACH lecture, follow these length rules strictly — do not write short phrases or fragments:
-- title: 3-8 words, specific and descriptive (not generic like "Part 1")
-- coreIdea: 3-4 full sentences clearly explaining the concept, MINIMUM 40 words
-- example: 2-3 sentences with a concrete, specific real-world scenario, MINIMUM 30 words
-- action: 1-2 full sentences describing a specific actionable task the student should do today, MINIMUM 15 words
-- mistake: 1-2 full sentences describing a common mistake AND briefly why it happens, MINIMUM 15 words
-- takeaway: 1 full sentence summarizing the key insight, MINIMUM 12 words
-
-Every field must be complete, well-formed sentences meeting the minimum word counts above. Do not abbreviate or truncate.
-
-Return ONLY valid JSON. No markdown, no backticks, no commentary before or after the JSON.
-{"lectures":[{"num":1,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":2,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":3,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":4,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":5,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"...","homework":["Task 1","Task 2"]}]}`;
-
+    const cacheKey=`m${currentMonth}w${currentWeek}d${currentDay}`;
+    if(!isDemo&&user?.id){const cached=await getCachedLectures(user.id,cacheKey);if(cached&&cached.length>=3){setLectures(cached);setLoading(false);return;}}
+    const prompt=`You are a world-class mentor teaching a 14-year-old beginner.\nWeek topic: "${weekTopic}"\nSubject: "${roadmap.title}"\nToday is Day ${currentDay} of 7 this week.\nFor Day ${currentDay}, cover sub-topics ${(currentDay-1)*5+1} to ${currentDay*5} of "${weekTopic}". Do NOT repeat previous days.\nGenerate EXACTLY 5 lectures. Return ONLY valid JSON. No markdown, no backticks.\n{"lectures":[{"num":1,"title":"Clear concise title","coreIdea":"2-3 sentences","example":"Real-world example","action":"One task","mistake":"One mistake","takeaway":"One sentence"},{"num":2,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":3,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":4,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":5,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"...","homework":["Task 1","Task 2"]}]}`;
     let raw="";
     try{raw=await askClaude([{role:"user",content:prompt}]);}catch{raw="";}
-
     if(raw?.trim()){
-      try{
-        let c=raw.trim().replace(/```json|```/gi,"").replace(/,(\s*[}\]])/g,"$1");
-        const m=c.match(/\{[\s\S]*\}/);
-        if(m){
-          const p=JSON.parse(m[0]);
-          const a=p.lectures&&Array.isArray(p.lectures)?p.lectures:[];
-          // Require BOTH count >=3 AND every lecture to pass depth validation before accepting
-          if(a.length>=3 && a.every(isValidLecture)){
-            setLectures(a);
-            if(!isDemo&&user?.id)await saveCachedLectures(user.id,cacheKey,a);
-            setLoading(false);
-            return;
-          } else if (a.length >= 3) {
-            console.warn("Lectures parsed but failed depth validation — one or more fields too short:", a);
-          }
-        }
+      try{let c=raw.trim().replace(/```json|```/gi,"").replace(/,(\s*[}\]])/g,"$1");const m=c.match(/\{[\s\S]*\}/);
+        if(m){const p=JSON.parse(m[0]);const a=p.lectures&&Array.isArray(p.lectures)?p.lectures:[];if(a.length>=3){setLectures(a);if(!isDemo&&user?.id)await saveCachedLectures(user.id,cacheKey,a);setLoading(false);return;}}
       }catch(e){console.warn("Parse failed:",e.message);}
     }
-
-    // Fallback — only reached if generation/parsing/validation all failed
-    console.warn("Falling back to generic lecture template for", cacheKey);
-    setLectures(Array.from({length:5},(_,i)=>({num:i+1,title:`${weekTopic} — Part ${i+1}`,coreIdea:`This covers a key aspect of ${weekTopic} that builds directly on what you've learned so far, and it's essential for understanding how the rest of this topic fits together.`,example:`In ${roadmap.title}, this concept appears frequently when working on real projects, especially once you start combining it with other ideas from this week.`,action:`Spend 10-15 minutes today actively practicing this concept with a small example of your own.`,mistake:`Beginners often skip this step or rush through it — don't, because it becomes much harder to fix later once you've built on top of it.`,takeaway:`Mastering this now gives you a real foundation for everything that comes next in ${weekTopic}.`,homework:i===4?["Find a real-world example","Apply today's concepts"]:null})));
+    setLectures(Array.from({length:5},(_,i)=>({num:i+1,title:`${weekTopic} — Part ${i+1}`,coreIdea:`This covers a key aspect of ${weekTopic}.`,example:`In ${roadmap.title}, this appears when working on real projects.`,action:`Spend 10 minutes applying this today.`,mistake:`Beginners often skip this — don't.`,takeaway:`Mastering this gives you a real edge.`,homework:i===4?["Find a real-world example","Apply today's concepts"]:null})));
     setLoading(false);
-  }, [currentMonth, currentWeek, currentDay, isDemo, user?.id, weekTopic, roadmap.title, isValidLecture]);
+  }, [currentMonth, currentWeek, currentDay, isDemo, user?.id, weekTopic, roadmap.title]);
 
   useEffect(()=>{setLectures(null);setActive(0);setAnswer("");setDayDone(false);setShowTask(false);setTaskSteps({});setTaskSubmitted(false);setTaskFeedback("");loadLectures();},[loadLectures]);
 
@@ -1369,7 +1366,7 @@ Return ONLY valid JSON. No markdown, no backticks, no commentary before or after
     let fb="Good work. Your submission shows clear thinking.";
     try{const res=await askClaude([{role:"user",content:`Student learning "${roadmap.title}" submitted work on "${weekTopic}":\n\n${submission}\n\nGive honest, specific feedback. Around 200 words.`}]);if(res&&res.trim().length>20)fb=res;}catch{fb="Good work. Your submission shows clear thinking.";}
     setTaskFeedback(fb);setTaskSubmitted(true);setLoadingFeedback(false);
-    try{await saveTaskSubmission(user.id,{weekKey:`${roadmapSlug(roadmap)}_m${currentMonth}w${currentWeek}d${currentDay}`,career:roadmap.title,taskTitle:getWeeklyTask().title,answers:taskSteps,feedback:fb});}catch{console.warn("Task submission could not be saved.");}
+    try{await saveTaskSubmission(user.id,{weekKey:`m${currentMonth}w${currentWeek}d${currentDay}`,career:roadmap.title,taskTitle:getWeeklyTask().title,answers:taskSteps,feedback:fb});}catch{console.warn("Task submission could not be saved.");}
   };
 
   const submitTaskDoubt=async()=>{
@@ -1751,8 +1748,12 @@ export default function App() {
       setPage("dashboard");
     }else{
       await upsertProgress(authUser.id,{...initialProgressFields(),last_visit:today});
-      if(!prof&&authUser.user_metadata?.full_name){await upsertProfile(authUser.id,{full_name:authUser.user_metadata.full_name,age:null,grade:null});setProfile({full_name:authUser.user_metadata.full_name});}
-      setPage("onboard");
+      let activeProfile = prof;
+      if(!activeProfile&&authUser.user_metadata?.full_name){
+        activeProfile={full_name:authUser.user_metadata.full_name,age:null,grade:null,has_seen_onboarding:false};
+        await upsertProfile(authUser.id,activeProfile);setProfile(activeProfile);
+      }
+      setPage(activeProfile?.has_seen_onboarding ? "onboard" : "feynmanIntro");
     }
   };
 
@@ -1761,9 +1762,16 @@ export default function App() {
     if(hasRoadmap){
       await loadUserData(au);
     } else {
-      // Brand new signup — show welcome screen after onboarding
-      setPage("onboard");
+      setPage(prof?.has_seen_onboarding ? "onboard" : "feynmanIntro");
     }
+  };
+
+  const handleFeynmanIntroDone=async()=>{
+    if(user?.id){
+      await markFeynmanOnboardingSeen(user.id);
+      setProfile(p=>({...p,has_seen_onboarding:true}));
+    }
+    setPage("onboard");
   };
 
   const logout=async()=>{await supabase.auth.signOut();setUser(null);setProfile(null);setRoadmap(null);setProgress(null);setPendingTopic("");setPendingTrack(null);setPage("landing");};
@@ -1835,6 +1843,7 @@ export default function App() {
 
       {page==="landing"&&<Landing onStart={startCustomTopic} onDemo={startDemo} onTrack={startSuggestedTrack}/>}
       {page==="auth"&&<Auth onAuth={onAuth}/>}
+      {page==="feynmanIntro"&&user&&<FeynmanIntro name={profile?.full_name||user?.user_metadata?.full_name||"there"} onDone={handleFeynmanIntroDone}/>}
       {page==="onboard"&&user&&<Onboarding key={`${pendingTopic}-${pendingTrack?.id||"custom"}`} user={user} profile={profile} onDone={handleOnboardingDone} initialTopic={pendingTopic} initialTrack={pendingTrack}/>}
       {page==="dashboard"&&roadmap&&progress&&<Dashboard user={user} roadmap={roadmap} progress={progress} onUpdateProgress={p=>setProgress(p)} onNav={setPage} isDemo={isDemo}/>}
       {page==="learn"&&roadmap&&progress&&<Learn user={user} progress={progress} roadmap={roadmap} onUpdateProgress={p=>setProgress(p)} isDemo={isDemo} onSignUp={()=>{exitDemo();setPage("auth");}}/>}
