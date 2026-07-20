@@ -94,6 +94,7 @@ async function askClaude(messages) {
 
 async function getProfile(userId) { const { data } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle(); return data; }
 async function upsertProfile(userId, fields) { await supabase.from("profiles").upsert({ id: userId, ...fields }); }
+async function markFeynmanOnboardingSeen(userId) { await upsertProfile(userId, { has_seen_onboarding: true }); }
 async function getRoadmap(userId) { const { data } = await supabase.from("roadmaps").select("*").eq("user_id", userId).maybeSingle(); return data; }
 async function upsertRoadmap(userId, roadmapData, meta = {}) { await supabase.from("roadmaps").upsert({ user_id: userId, title: roadmapData.title, data: roadmapData, ...meta }); }
 async function getProgress(userId) {
@@ -524,6 +525,14 @@ const css = `
   .welcome-title{animation:slideUp 0.6s ease 0.4s both;opacity:0;}
   .welcome-sub{animation:slideUp 0.6s ease 0.55s both;opacity:0;}
   .welcome-btn{animation:slideUp 0.6s ease 0.7s both;opacity:0;}
+  .feynman-page{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:96px 24px 56px;background:radial-gradient(ellipse at 50% 0%,rgba(139,92,246,0.14),transparent 62%),var(--bg);}
+  .feynman-card{width:100%;max-width:760px;position:relative;overflow:hidden;}
+  .feynman-card::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 18% 0%,rgba(212,168,83,0.10),transparent 54%);pointer-events:none;}
+  .feynman-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:22px 0 26px;position:relative;z-index:1;}
+  .feynman-step{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;min-height:150px;}
+  .feynman-step-num{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:rgba(167,139,250,0.14);border:1px solid rgba(167,139,250,0.28);color:var(--accent2);font-family:var(--font-mono);font-size:11px;font-weight:600;margin-bottom:12px;}
+  .feynman-step h3{font-family:var(--font);font-size:14px;font-weight:600;margin-bottom:8px;letter-spacing:0;color:var(--ink);}
+  .feynman-step p{font-size:12px;line-height:1.65;color:var(--muted);}
 
   /* ── Professor Joke Sidekick ── */
   .prof-sidekick{position:relative;display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 8px;flex-shrink:0;}
@@ -567,6 +576,8 @@ const css = `
     .hero-text{max-width:100%!important;}
     .hero-brain{width:260px!important;height:260px!important;margin:0 auto;}
     .quick-track-card{min-height:auto;}
+    .feynman-steps{grid-template-columns:1fr!important;}
+    .feynman-step{min-height:auto;}
     .hero-text > div[style*="repeat(3,1fr)"]{grid-template-columns:1fr!important;}
     .features-grid{grid-template-columns:1fr!important;}
     .stats-grid{grid-template-columns:repeat(2,1fr)!important;}
@@ -661,6 +672,51 @@ function WelcomeScreen({ name, onDone }) {
   );
 }
 
+function FeynmanIntro({ name, onDone }) {
+  const [saving, setSaving] = useState(false);
+  const firstName = name?.split(" ")[0] || "there";
+  const steps = [
+    { title: "Learn it", body: "Professor Max gives you a focused lecture on whatever you picked." },
+    { title: "Explain it", body: "Then you teach it back in your own words. Fancy fog is politely not accepted." },
+    { title: "Patch the gaps", body: "The AI student points at vague bits until your explanation is simple enough to survive daylight." },
+  ];
+  const finish = async () => {
+    if (saving) return;
+    setSaving(true);
+    await onDone();
+    setSaving(false);
+  };
+  return (
+    <div className="feynman-page page">
+      <div className="card card-p-lg feynman-card">
+        <div style={{position:"relative",zIndex:1}}>
+          <div className="row gap-8" style={{marginBottom:14,flexWrap:"wrap"}}>
+            <span className="badge badge-blue">How Velorn works</span>
+            <span className="badge badge-neutral">30-second briefing</span>
+          </div>
+          <h1 style={{fontFamily:"var(--font-display)",fontSize:"clamp(32px,5vw,52px)",fontWeight:300,lineHeight:1.08,marginBottom:12}}>
+            Hey {firstName}, meet the Feynman trick.
+          </h1>
+          <p style={{fontSize:15,color:"var(--ink2)",lineHeight:1.75,maxWidth:620}}>
+            You do not really know a thing until you can explain it simply. If your explanation turns into academic soup, congratulations: we found the exact spot to fix.
+          </p>
+          <div className="feynman-steps">
+            {steps.map((step, i) => (
+              <div key={step.title} className="feynman-step">
+                <div className="feynman-step-num">0{i + 1}</div>
+                <h3>{step.title}</h3>
+                <p>{step.body}</p>
+              </div>
+            ))}
+          </div>
+          <button className="btn btn-primary btn-lg row gap-8" style={{justifyContent:"center",width:"100%"}} onClick={finish} disabled={saving}>
+            {saving ? <><Icon.Loader/> Saving</> : <>Got it, let's start learning <Icon.ArrowRight/></>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 // ── Professor Joke Sidekick ────────────────────────────────────────────────
 const PROF_JOKES = [
   "Why do programmers prefer dark mode? Because light attracts bugs! 🐛",
@@ -1090,7 +1146,7 @@ function Auth({ onAuth }) {
       if(!form.name||!form.age||!form.grade||!form.email||!form.password){setErr("All fields required.");setLoading(false);return;}
       const{data,error}=await supabase.auth.signUp({email:form.email,password:form.password,options:{data:{full_name:form.name}}});
       if(error){setErr(error.message);setLoading(false);return;}
-      if(data.user){const prof={full_name:form.name,age:form.age,grade:form.grade};await upsertProfile(data.user.id,{full_name:form.name,age:parseInt(form.age),grade:form.grade});await upsertProgress(data.user.id,initialProgressFields());saveKnownDeviceUser(data.user,prof);onAuth(data.user,prof,false);}
+      if(data.user){const prof={full_name:form.name,age:form.age,grade:form.grade,has_seen_onboarding:false};await upsertProfile(data.user.id,{full_name:form.name,age:parseInt(form.age),grade:form.grade,has_seen_onboarding:false});await upsertProgress(data.user.id,initialProgressFields());saveKnownDeviceUser(data.user,prof);onAuth(data.user,prof,false);}
     }else{
       const{data,error}=await supabase.auth.signInWithPassword({email:form.email,password:form.password});
       if(error){setErr("Invalid email or password.");setLoading(false);return;}
@@ -1751,8 +1807,12 @@ export default function App() {
       setPage("dashboard");
     }else{
       await upsertProgress(authUser.id,{...initialProgressFields(),last_visit:today});
-      if(!prof&&authUser.user_metadata?.full_name){await upsertProfile(authUser.id,{full_name:authUser.user_metadata.full_name,age:null,grade:null});setProfile({full_name:authUser.user_metadata.full_name});}
-      setPage("onboard");
+      let activeProfile = prof;
+      if(!activeProfile&&authUser.user_metadata?.full_name){
+        activeProfile={full_name:authUser.user_metadata.full_name,age:null,grade:null,has_seen_onboarding:false};
+        await upsertProfile(authUser.id,activeProfile);setProfile(activeProfile);
+      }
+      setPage(activeProfile?.has_seen_onboarding ? "onboard" : "feynmanIntro");
     }
   };
 
@@ -1761,9 +1821,16 @@ export default function App() {
     if(hasRoadmap){
       await loadUserData(au);
     } else {
-      // Brand new signup — show welcome screen after onboarding
-      setPage("onboard");
+      setPage(prof?.has_seen_onboarding ? "onboard" : "feynmanIntro");
     }
+  };
+
+  const handleFeynmanIntroDone=async()=>{
+    if(user?.id){
+      await markFeynmanOnboardingSeen(user.id);
+      setProfile(p=>({...p,has_seen_onboarding:true}));
+    }
+    setPage("onboard");
   };
 
   const logout=async()=>{await supabase.auth.signOut();setUser(null);setProfile(null);setRoadmap(null);setProgress(null);setPendingTopic("");setPendingTrack(null);setPage("landing");};
@@ -1835,6 +1902,7 @@ export default function App() {
 
       {page==="landing"&&<Landing onStart={startCustomTopic} onDemo={startDemo} onTrack={startSuggestedTrack}/>}
       {page==="auth"&&<Auth onAuth={onAuth}/>}
+      {page==="feynmanIntro"&&user&&<FeynmanIntro name={profile?.full_name||user?.user_metadata?.full_name||"there"} onDone={handleFeynmanIntroDone}/>}
       {page==="onboard"&&user&&<Onboarding key={`${pendingTopic}-${pendingTrack?.id||"custom"}`} user={user} profile={profile} onDone={handleOnboardingDone} initialTopic={pendingTopic} initialTrack={pendingTrack}/>}
       {page==="dashboard"&&roadmap&&progress&&<Dashboard user={user} roadmap={roadmap} progress={progress} onUpdateProgress={p=>setProgress(p)} onNav={setPage} isDemo={isDemo}/>}
       {page==="learn"&&roadmap&&progress&&<Learn user={user} progress={progress} roadmap={roadmap} onUpdateProgress={p=>setProgress(p)} isDemo={isDemo} onSignUp={()=>{exitDemo();setPage("auth");}}/>}
