@@ -96,7 +96,7 @@ async function getProfile(userId) { const { data } = await supabase.from("profil
 async function upsertProfile(userId, fields) { await supabase.from("profiles").upsert({ id: userId, ...fields }); }
 async function markFeynmanOnboardingSeen(userId) { await upsertProfile(userId, { has_seen_onboarding: true }); }
 async function getRoadmap(userId) { const { data } = await supabase.from("roadmaps").select("*").eq("user_id", userId).maybeSingle(); return data; }
-async function upsertRoadmap(userId, roadmapData, meta = {}) { await supabase.from("roadmaps").upsert({ user_id: userId, title: roadmapData.title, data: roadmapData, ...meta }); }
+async function upsertRoadmap(userId, roadmapData, meta = {}) { await supabase.from("roadmaps").upsert({ user_id: userId, title: roadmapData.title, data: roadmapData, ...meta }, { onConflict: "user_id" }); }
 async function getProgress(userId) {
   const { data } = await supabase.from("progress").select("*").eq("user_id", userId).maybeSingle();
   if (!data) return { current_month:1, current_week:1, current_day:1, streak:0, completed_days:[], last_visit: new Date().toISOString().slice(0,10) };
@@ -107,6 +107,10 @@ function initialProgressFields() { return { current_month:1, current_week:1, cur
 async function saveTaskSubmission(userId, data) { await supabase.from("task_submissions").upsert({ user_id: userId, week_key: data.weekKey, career: data.career, task_title: data.taskTitle, answers: data.answers, feedback: data.feedback, submitted_at: new Date().toISOString() }, { onConflict: "user_id,week_key" }); }
 async function getCachedLectures(userId, key) { const { data } = await supabase.from("lecture_cache").select("lectures").eq("user_id", userId).eq("roadmap_key", key).maybeSingle(); return data?.lectures || null; }
 async function saveCachedLectures(userId, key, lectures) { await supabase.from("lecture_cache").upsert({ user_id: userId, roadmap_key: key, lectures }, { onConflict: "user_id,roadmap_key" }); }
+function roadmapSlug(roadmap) {
+  const base = roadmap?.trackId || roadmap?.title || "roadmap";
+  return String(base).toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,"").slice(0,60) || "roadmap";
+}
 
 function dbToProgress(row) {
   if (!row) return { currentMonth:1, currentWeek:1, currentDay:1, streak:0, completedDays:[] };
@@ -1431,7 +1435,7 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
 
   const loadLectures=useCallback(async()=>{
     setLoading(true);
-    const cacheKey=`m${currentMonth}w${currentWeek}d${currentDay}`;
+    const cacheKey=`${roadmapSlug(roadmap)}-m${currentMonth}w${currentWeek}d${currentDay}`;
     if(!isDemo&&user?.id){const cached=await getCachedLectures(user.id,cacheKey);if(cached&&cached.length>=3){setLectures(cached);setLoading(false);return;}}
     const prompt=`You are a world-class mentor teaching a 14-year-old beginner.\nWeek topic: "${weekTopic}"\nSubject: "${roadmap.title}"\nToday is Day ${currentDay} of 7 this week.\nFor Day ${currentDay}, cover sub-topics ${(currentDay-1)*5+1} to ${currentDay*5} of "${weekTopic}". Do NOT repeat previous days.\nGenerate EXACTLY 5 lectures. Return ONLY valid JSON. No markdown, no backticks.\n{"lectures":[{"num":1,"title":"Clear concise title","coreIdea":"2-3 sentences","example":"Real-world example","action":"One task","mistake":"One mistake","takeaway":"One sentence"},{"num":2,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":3,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":4,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":5,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"...","homework":["Task 1","Task 2"]}]}`;
     let raw="";
@@ -1464,7 +1468,7 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
     let fb="Good work. Your submission shows clear thinking.";
     try{const res=await askClaude([{role:"user",content:`Student learning "${roadmap.title}" submitted work on "${weekTopic}":\n\n${submission}\n\nGive honest, specific feedback. Around 200 words.`}]);if(res&&res.trim().length>20)fb=res;}catch{fb="Good work. Your submission shows clear thinking.";}
     setTaskFeedback(fb);setTaskSubmitted(true);setLoadingFeedback(false);
-    try{await saveTaskSubmission(user.id,{weekKey:`m${currentMonth}w${currentWeek}d${currentDay}`,career:roadmap.title,taskTitle:getWeeklyTask().title,answers:taskSteps,feedback:fb});}catch{console.warn("Task submission could not be saved.");}
+    try{await saveTaskSubmission(user.id,{weekKey:`${roadmapSlug(roadmap)}-m${currentMonth}w${currentWeek}d${currentDay}`,career:roadmap.title,taskTitle:getWeeklyTask().title,answers:taskSteps,feedback:fb});}catch{console.warn("Task submission could not be saved.");}
   };
 
   const submitTaskDoubt=async()=>{
