@@ -42,8 +42,8 @@ serve(async (req: Request) => {
         body: JSON.stringify({
           model: "llama-3.3-70b-versatile",
           messages: [{ role: "user", content: question }],
-          temperature: 0.9,
-          max_tokens: 6000,
+          temperature: 0.4,
+          max_tokens: 8000,
         }),
       }
     );
