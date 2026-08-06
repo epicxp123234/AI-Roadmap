@@ -8,7 +8,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON, {
 });
 
 const LANDING_EXAMPLES = ["Chess","Web Development","Digital Art","Entrepreneurship","Music Production","Graphic Design"];
-const DISCORD_URL = "https://discord.gg/X7gVQNJX9r";
+
 const SUGGESTED_TRACKS = [
   {
     id: "python",
@@ -1099,9 +1099,7 @@ function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, isDemo, onSignU
           <button onClick={onToggleTheme} className="theme-toggle" aria-label="Toggle light or dark mode" title={theme==="dark"?"Switch to light mode":"Switch to dark mode"}>
             {theme==="dark"?<Icon.Sun/>:<Icon.Moon/>}
           </button>
-        <a href={DISCORD_URL} target="_blank" rel="noopener noreferrer" className="theme-toggle" aria-label="Join Discord" title="Join our Discord">
-          <Icon.Discord/>
-        </a>
+        
           
           {user && !isDemo && <button onClick={onOpenEmailSettings} className="btn btn-ghost btn-sm row gap-6"><Icon.Bell/></button>}
           {user && (isDemo ? <button className="btn btn-primary btn-sm" onClick={onSignUp}>Sign Up</button> : <button className="btn btn-ghost btn-sm btn-icon" onClick={onLogout}><Icon.LogOut/></button>)}
