@@ -7,13 +7,30 @@ const EMAILJS_PUBLIC_KEY = "_22wrLmwQJNVFd-pa";
 
 Deno.serve(async (req: Request) => {
   const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
+    // Nothing in the browser calls this function — it's triggered by your
+    // scheduler — so there's no legitimate "origin" to allow. Leaving this
+    // permissive would let a page anywhere try to trigger it via fetch.
+    "Access-Control-Allow-Origin": "null",
     "Access-Control-Allow-Headers":
-      "authorization, x-client-info, apikey, content-type",
+      "authorization, x-client-info, apikey, content-type, x-cron-secret",
   };
 
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
+  }
+
+  // --- Require a shared secret instead of a user login ---
+  // This function runs with the service role key, so anyone who could hit
+  // this URL directly would otherwise get full DB read/write plus the
+  // ability to spam-email your whole user list on demand.
+  const cronSecret = req.headers.get("x-cron-secret");
+  const expectedSecret = Deno.env.get("CRON_SECRET");
+
+  if (!expectedSecret || cronSecret !== expectedSecret) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
   try {
@@ -169,9 +186,7 @@ Deno.serve(async (req: Request) => {
       }),
       {
         status: 500,
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );
   }
