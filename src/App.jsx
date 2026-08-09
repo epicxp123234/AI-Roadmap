@@ -84,9 +84,17 @@ function getKnownDeviceUser() {
 async function askClaude(messages) {
   const userMessage = messages.find(m => m.role === "user")?.content || "";
   try {
-    const res = await fetch("https://knqclhfxhkishaivowhe.supabase.co/functions/v1/ask-doubt",
-      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: userMessage }) });
-    const data = await res.json();
+    // supabase.functions.invoke automatically attaches the current user's
+    // session token as the Authorization header, which the edge function
+    // now requires. This also means a logged-out user simply can't call it.
+    const { data, error } = await supabase.functions.invoke("ask-doubt", {
+      body: { question: userMessage },
+    });
+    if (error) {
+      if (error.context?.status === 401) return "Please log in to ask a question.";
+      if (error.context?.status === 429) return "You're sending requests too fast. Try again in a bit.";
+      return "";
+    }
     if (typeof data.answer === "string") return data.answer;
     if (data.answer?.content) return data.answer.content;
     return JSON.stringify(data);
@@ -686,6 +694,29 @@ const css = `
     .stat-value{font-size:26px!important;}
     .nav-logo span{display:none;}
   }
+
+  /* ── Journey / gamification layer ─────────────────────────────────── */
+  @keyframes flameFlicker{0%,100%{transform:scale(1) rotate(-2deg);}50%{transform:scale(1.1) rotate(2deg);}}
+  @keyframes floatUpFade{0%{transform:translateY(0);opacity:1;}100%{transform:translateY(-46px);opacity:0;}}
+  @keyframes shimmerMove{0%{background-position:0% 0;}100%{background-position:200% 0;}}
+  @keyframes nodePulse{0%,100%{box-shadow:0 0 0 0 rgba(138,92,35,0.45);}50%{box-shadow:0 0 0 12px rgba(138,92,35,0);}}
+  @keyframes levelUpFlash{0%{opacity:0;transform:scale(0.9);}15%{opacity:1;transform:scale(1);}85%{opacity:1;}100%{opacity:0;}}
+  @keyframes dotPop{0%{transform:scale(0.4);opacity:0;}60%{transform:scale(1.15);}100%{transform:scale(1);opacity:1;}}
+  .streak-flame{display:inline-block;animation:flameFlicker 1.8s ease-in-out infinite;}
+  .floating-xp{position:fixed;pointer-events:none;font-family:var(--font-display);font-style:italic;font-weight:600;font-size:19px;color:var(--gold);z-index:9002;animation:floatUpFade 1.5s ease-out forwards;text-shadow:0 1px 6px rgba(0,0,0,0.15);}
+  .hero-continue-btn{position:relative;overflow:hidden;background:linear-gradient(100deg,var(--accent2) 0%,var(--gold) 25%,var(--accent2) 50%,var(--gold) 75%,var(--accent2) 100%);background-size:250% 100%;animation:shimmerMove 5s linear infinite;color:#fff;border:none;border-radius:14px;padding:20px 28px;font-family:var(--font);font-size:17px;font-weight:600;letter-spacing:0.01em;cursor:pointer;box-shadow:0 12px 32px rgba(74,90,53,0.32);width:100%;transition:transform 0.15s;}
+  .hero-continue-btn:hover{transform:translateY(-2px);}
+  .hero-continue-btn:active{transform:translateY(0);}
+  .journey-scroll{display:flex;align-items:flex-end;gap:0;overflow-x:auto;padding:36px 20px 24px;-webkit-overflow-scrolling:touch;}
+  .journey-node-wrap{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:74px;position:relative;transition:margin-top 0.2s;}
+  .journey-node{display:flex;align-items:center;justify-content:center;border-radius:50%;font-family:var(--font-mono);font-weight:700;transition:all 0.2s;position:relative;}
+  .journey-node.current{animation:nodePulse 1.9s ease-out infinite;}
+  .journey-connector{height:2px;flex-shrink:0;width:28px;margin-bottom:29px;background-repeat:repeat-x;background-image:linear-gradient(90deg,var(--border2) 50%,transparent 50%);background-size:8px 2px;}
+  .weekly-dot{width:9px;height:9px;border-radius:50%;transition:all 0.2s;}
+  .weekly-dot.filled{animation:dotPop 0.3s ease-out;}
+  .levelup-overlay{position:fixed;inset:0;z-index:9500;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:rgba(20,15,8,0.6);animation:levelUpFlash 1.9s ease-in-out forwards;pointer-events:none;}
+  .levelup-text{font-family:var(--font-display);font-style:italic;font-size:46px;color:#fff;text-shadow:0 0 30px var(--gold);}
+  .levelup-sub{font-family:var(--font-mono);font-size:13px;letter-spacing:0.1em;text-transform:uppercase;color:var(--gold);}
 `;
 
 // ── Confetti helper ────────────────────────────────────────────────────────
@@ -1364,25 +1395,223 @@ function Onboarding({ user, profile, onDone, initialTopic = "", initialTrack = n
   );
 }
 
+// XP: +20 per completed day. 300 XP per level, matching "Level 3 — 240/300 XP" style display.
+const XP_PER_DAY = 20;
+const XP_PER_LEVEL = 300;
+function xpFromProgress(completedDays){
+  const totalXp = completedDays.length * XP_PER_DAY;
+  const level = Math.floor(totalXp / XP_PER_LEVEL) + 1;
+  const xpInLevel = totalXp % XP_PER_LEVEL;
+  return { totalXp, level, xpInLevel, xpTarget: XP_PER_LEVEL };
+}
+
+// Floating "+20 XP" text that drifts up and fades — spawned imperatively so
+// bursts can stack without extra re-renders of the whole dashboard.
+function spawnFloatingXp(amount, originEl){
+  if(typeof document==="undefined") return;
+  const rect = originEl?.getBoundingClientRect();
+  const x = rect ? rect.left + rect.width/2 : window.innerWidth/2;
+  const y = rect ? rect.top : window.innerHeight/2;
+  const el = document.createElement("div");
+  el.className = "floating-xp";
+  el.textContent = `+${amount} XP`;
+  el.style.left = `${x}px`;
+  el.style.top = `${y}px`;
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(), 1600);
+}
+
+function vibrate(pattern){
+  try{ if(navigator?.vibrate) navigator.vibrate(pattern); }catch{}
+}
+
+// A short zig-zag "level map" for the current learning week: 7 day-nodes,
+// done/current/locked states driven by real progress data (no fake states).
+function WeekJourneyMap({ week, currentMonth, currentWeek, currentDay, completedDays, onJumpToday }) {
+  const offsets = [0, 34, 8, 42, 4, 36, 12]; // vertical wave pattern
+  const days = week?.days || Array.from({length:7},(_,i)=>({day:i+1,task:""}));
+  return (
+    <div className="card" style={{marginBottom:12,overflow:"hidden"}}>
+      <div style={{padding:"14px 20px 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span style={{fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--muted)",fontFamily:"var(--font-mono)"}}>This Week's Path</span>
+        <span style={{fontSize:11,color:"var(--muted)",fontFamily:"var(--font-mono)"}}>Week {currentWeek} of 4</span>
+      </div>
+      <div className="journey-scroll">
+        {days.map((d,i)=>{
+          const key=`m${currentMonth}w${currentWeek}d${d.day}`;
+          const isDone=completedDays.includes(key);
+          const isCurrent=!isDone && d.day===currentDay;
+          const isLocked=!isDone && d.day>currentDay;
+          const size=isCurrent?54:44;
+          let bg="var(--surface2)",border="1px solid var(--border2)",color="var(--muted)";
+          if(isDone){bg="var(--emerald)";color="#fff";border="1px solid var(--emerald)";}
+          else if(isCurrent){bg="var(--gold)";color="#fff";border="2px solid var(--gold)";}
+          return (
+            <div key={d.day} style={{display:"flex",alignItems:"flex-end"}}>
+              {i>0 && <div className="journey-connector" />}
+              <div className="journey-node-wrap" style={{marginTop:offsets[i%offsets.length]}}>
+                <button
+                  onClick={isLocked?undefined:onJumpToday}
+                  disabled={isLocked}
+                  className={`journey-node${isCurrent?" current":""}`}
+                  style={{width:size,height:size,background:bg,border,color,cursor:isLocked?"default":"pointer",fontSize:isCurrent?15:13}}
+                  title={isLocked?"Locked — finish today's task first":`Day ${d.day}`}
+                >
+                  {isDone ? <Icon.Check/> : isLocked ? <span style={{fontSize:12,opacity:0.7}}>🔒</span> : d.day}
+                </button>
+                <span style={{fontSize:9,marginTop:6,color:"var(--muted)",fontFamily:"var(--font-mono)",whiteSpace:"nowrap"}}>
+                  {isCurrent ? "YOU ARE HERE" : `Day ${d.day}`}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+        <div className="journey-connector" />
+        <div className="journey-node-wrap" style={{marginTop:offsets[0]}}>
+          <div style={{width:44,height:44,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",background:"var(--surface2)",border:"1px dashed var(--border2)",fontSize:16,opacity:0.6}}>☁️</div>
+          <span style={{fontSize:9,marginTop:6,color:"var(--subtle)",fontFamily:"var(--font-mono)",whiteSpace:"nowrap"}}>More ahead…</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Dashboard({ user, roadmap, progress, onUpdateProgress, onNav, isDemo }) {
   const{currentMonth=1,currentWeek=1,currentDay=1,streak=0,completedDays=[]}=progress;
   const totalDays=180;const pct=Math.min(100,Math.round((completedDays.length/totalDays)*100));
   const month=roadmap.months[currentMonth-1];const week=month?.weeks[currentWeek-1];
   const todayTask=week?.days[currentDay-1]?.task??"All caught up.";
-  const markDone=async()=>{
+  const todayKey=`m${currentMonth}w${currentWeek}d${currentDay}`;
+  const todayDone=completedDays.includes(todayKey);
+
+  const { totalXp, level, xpInLevel, xpTarget } = xpFromProgress(completedDays);
+  const [showLevelUp, setShowLevelUp] = useState(false);
+  const [heroLearners, setHeroLearners] = useState(null);
+  const heroBtnRef = useRef(null);
+  const doneBtnRef = useRef(null);
+
+  // Social proof widget: only render if we can honestly fetch a real count.
+  // No hardcoded/fake numbers — if the query fails (e.g. RLS blocks a
+  // cross-user count with the anon key) the widget just doesn't show.
+  useEffect(()=>{
+    let cancelled=false;
+    supabase.from("progress").select("user_id",{count:"exact",head:true})
+      .then(({count,error})=>{ if(!cancelled && !error && typeof count==="number") setHeroLearners(count); })
+      .catch(()=>{});
+    return ()=>{cancelled=true;};
+  },[]);
+
+  // Streak-saver reminder. Works only while this tab/PWA is open in the
+  // background — a real "notify even when fully closed" system needs a
+  // service worker + push subscription + a server trigger, which isn't
+  // wired up here.
+  useEffect(()=>{
+    if(typeof Notification==="undefined") return;
+    if(Notification.permission==="default") Notification.requestPermission().catch(()=>{});
+    const check=()=>{
+      const hour=new Date().getHours();
+      if(hour>=20 && streak>0 && !todayDone && Notification.permission==="granted"){
+        new Notification(`Your ${streak}-day streak ends soon 🔥`,{ body:"Finish today's task to keep it alive.", tag:"streak-saver" });
+      }
+    };
+    const id=setInterval(check, 15*60*1000);
+    return ()=>clearInterval(id);
+  },[streak,todayDone]);
+
+  const markDone=async(e)=>{
     if(isDemo){alert("Sign up to track your progress.");return;}
-    const key=`m${currentMonth}w${currentWeek}d${currentDay}`;if(completedDays.includes(key))return;
+    const key=todayKey;if(completedDays.includes(key))return;
     const newCompleted=[...completedDays,key];let nd=currentDay+1,nw=currentWeek,nm=currentMonth;
     if(nd>7){nd=1;nw++;}if(nw>4){nw=1;nm++;}if(nm>6)nm=6;
     const next={...progress,completedDays:newCompleted,streak:streak+1,currentDay:nd,currentWeek:nw,currentMonth:nm};
+
+    const prevLevel = xpFromProgress(completedDays).level;
+    const nextLevel = xpFromProgress(newCompleted).level;
+
     await upsertProgress(user.id,progressToDb(next));onUpdateProgress(next);
+
+    spawnFloatingXp(XP_PER_DAY, e?.currentTarget || doneBtnRef.current);
+    vibrate(nextLevel>prevLevel ? [40,60,40,60,120] : 30);
+    if(nextLevel>prevLevel){
+      setShowLevelUp(true);
+      setTimeout(()=>setShowLevelUp(false), 1900);
+    }
   };
+
   return (
     <div className="page container" style={{paddingTop:90,paddingBottom:64}}>
-      <div style={{marginBottom:32}}>
-        <p style={{fontSize:11,color:"var(--muted)",marginBottom:4,fontFamily:"var(--font-mono)",textTransform:"uppercase",letterSpacing:"0.1em"}}>{roadmap.title}</p>
-        <h2 style={{fontFamily:"var(--font-display)",fontSize:32,fontWeight:400}}>Dashboard</h2>
+      {showLevelUp && (
+        <div className="levelup-overlay">
+          <div className="levelup-text">LEVEL UP!</div>
+          <div className="levelup-sub">Now Level {level}</div>
+        </div>
+      )}
+
+      <div style={{marginBottom:20,display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
+        <div>
+          <p style={{fontSize:11,color:"var(--muted)",marginBottom:4,fontFamily:"var(--font-mono)",textTransform:"uppercase",letterSpacing:"0.1em"}}>{roadmap.title}</p>
+          <h2 style={{fontFamily:"var(--font-display)",fontSize:32,fontWeight:400}}>Dashboard</h2>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span className="streak-flame" style={{fontSize:22}}>🔥</span>
+          <div>
+            <div style={{fontSize:15,fontWeight:600,lineHeight:1.1}}>{streak > 0 ? `${streak}-Day Streak` : "No streak yet"}</div>
+            <div style={{fontSize:11,color:"var(--muted)"}}>{streak<3 ? "Complete today's task to build it up" : "Keep it going"}</div>
+          </div>
+          <span
+            title="Streak Freeze — earn one by finishing bonus/extra-credit work (coming soon)"
+            style={{width:28,height:28,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",background:"var(--surface2)",border:"1px solid var(--border2)",opacity:0.45,fontSize:14,cursor:"help"}}
+          >🛡️</span>
+        </div>
       </div>
+
+      {/* Weekly dot strip — 7 learning-days in the current week (the app tracks
+          learning-day progress, not calendar dates, so this mirrors that rather
+          than faking a Mon–Sun calendar). */}
+      <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:20}}>
+        {Array.from({length:7},(_,i)=>i+1).map(d=>{
+          const done=completedDays.includes(`m${currentMonth}w${currentWeek}d${d}`);
+          const isToday=d===currentDay;
+          return <span key={d} className={`weekly-dot${done?" filled":""}`} style={{background:done?"var(--emerald)":isToday?"var(--gold)":"var(--surface3)"}} title={`Day ${d}${done?" — done":isToday?" — today":""}`} />;
+        })}
+        <span style={{fontSize:11,color:"var(--muted)",fontFamily:"var(--font-mono)",marginLeft:6}}>this week</span>
+      </div>
+
+      {/* XP bar */}
+      <div className="card card-p" style={{marginBottom:12}}>
+        <div className="row gap-8" style={{justifyContent:"space-between",marginBottom:8}}>
+          <span style={{fontSize:13,fontWeight:600}}>Level {level}</span>
+          <span style={{fontSize:11,color:"var(--muted)",fontFamily:"var(--font-mono)"}}>{xpInLevel} / {xpTarget} XP</span>
+        </div>
+        <div className="progress-track" style={{height:6,borderRadius:999,background:"var(--surface3)"}}>
+          <div className="progress-fill" style={{width:`${Math.round((xpInLevel/xpTarget)*100)}%`,background:"linear-gradient(90deg,var(--accent2),var(--gold))",borderRadius:999}}/>
+        </div>
+      </div>
+
+      {/* Hero button — one obvious next action */}
+      <button ref={heroBtnRef} className="hero-continue-btn row gap-8" style={{justifyContent:"center",marginBottom:20}} onClick={()=>onNav(todayDone?"learn":"learn")}>
+        Continue Your Journey <Icon.ArrowRight/>
+      </button>
+
+      <WeekJourneyMap
+        week={week}
+        currentMonth={currentMonth}
+        currentWeek={currentWeek}
+        currentDay={currentDay}
+        completedDays={completedDays}
+        onJumpToday={()=>onNav("learn")}
+      />
+
+      <div className="card card-p" style={{marginBottom:12,borderLeft:"2px solid var(--accent2)"}}>
+        <div style={{marginBottom:10}}><span className="badge badge-neutral">Day {currentDay} · Today</span></div>
+        <p style={{fontSize:14,lineHeight:1.7,color:"var(--ink2)",marginBottom:18}}>{todayTask}</p>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          <button className="btn btn-primary row gap-6" onClick={()=>onNav("learn")}>Start Learning <Icon.ArrowRight/></button>
+          <button ref={doneBtnRef} className="btn btn-secondary" onClick={markDone} disabled={todayDone}>{todayDone?"Done ✓":"Mark Done"}</button>
+          {!isDemo&&<button className="btn btn-ghost" onClick={()=>onNav("onboard")}>Start another topic</button>}
+        </div>
+      </div>
+
       <div className="stats-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:20}}>
         {[{label:"Month",value:`${currentMonth}`,sub:"of 6"},{label:"Week",value:`${currentWeek}`,sub:"of 4"},{label:"Streak",value:`${streak}`,sub:"days"},{label:"Complete",value:`${pct}%`,sub:`${completedDays.length}/${totalDays}`}].map(s=>(
           <div key={s.label} className="card stat-card" style={{position:"relative",overflow:"hidden"}}>
@@ -1393,6 +1622,7 @@ function Dashboard({ user, roadmap, progress, onUpdateProgress, onNav, isDemo })
           </div>
         ))}
       </div>
+
       <div className="card card-p" style={{marginBottom:12}}>
         <div className="row gap-8" style={{justifyContent:"space-between",marginBottom:10}}>
           <span style={{fontSize:13,fontWeight:500}}>Overall Progress</span>
@@ -1400,15 +1630,14 @@ function Dashboard({ user, roadmap, progress, onUpdateProgress, onNav, isDemo })
         </div>
         <div className="progress-track" style={{height:3}}><div className="progress-fill progress-fill-gold" style={{width:`${pct}%`}}/></div>
       </div>
-      <div className="card card-p" style={{marginBottom:12,borderLeft:"2px solid var(--accent2)"}}>
-        <div style={{marginBottom:10}}><span className="badge badge-neutral">Day {currentDay} · Today</span></div>
-        <p style={{fontSize:14,lineHeight:1.7,color:"var(--ink2)",marginBottom:18}}>{todayTask}</p>
-        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-          <button className="btn btn-primary row gap-6" onClick={()=>onNav("learn")}>Start Learning <Icon.ArrowRight/></button>
-          <button className="btn btn-secondary" onClick={markDone}>Mark Done</button>
-          {!isDemo&&<button className="btn btn-ghost" onClick={()=>onNav("onboard")}>Start another topic</button>}
+
+      {heroLearners!==null && (
+        <div className="card card-p" style={{marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:16}}>👥</span>
+          <span style={{fontSize:13,color:"var(--ink2)"}}>{heroLearners} learner{heroLearners===1?"":"s"} on Velorn right now</span>
         </div>
-      </div>
+      )}
+
       {week&&(
         <div className="card card-p">
           <p style={{fontSize:10,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--muted)",marginBottom:8,fontFamily:"var(--font-mono)"}}>Week {currentWeek} Goal</p>
