@@ -91,6 +91,15 @@ function withTimeout(promise, ms = 8000, fallback = null) {
 async function askClaude(messages) {
   const userMessage = messages.find(m => m.role === "user")?.content || "";
   try {
+    // Proactively refresh a near-expiry session so supabase.functions.invoke
+    // doesn't attach a stale JWT and trigger a spurious 401.
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const expiresAt = sessionData?.session?.expires_at;
+      if (expiresAt && expiresAt * 1000 - Date.now() < 60000) {
+        await supabase.auth.refreshSession();
+      }
+    } catch {}
     // supabase.functions.invoke automatically attaches the current user's
     // session token as the Authorization header, which the edge function
     // now requires. This also means a logged-out user simply can't call it.
@@ -1671,20 +1680,37 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
   const[taskDoubt,setTaskDoubt]=useState("");const[taskDoubtAnswer,setTaskDoubtAnswer]=useState("");const[loadingTaskDoubt,setLoadingTaskDoubt]=useState(false);
   // NEW STATE
   const[showTeachMe,setShowTeachMe]=useState(false);
+  const[lectureError,setLectureError]=useState(false);
 
   const loadLectures=useCallback(async()=>{
     setLoading(true);
+    setLectureError(false);
     const cacheKey=`${roadmapSlug(roadmap)}-m${currentMonth}w${currentWeek}d${currentDay}`;
     if(!isDemo&&user?.id){const cached=await withTimeout(getCachedLectures(user.id,cacheKey), 6000, null);if(cached&&cached.length>=3){setLectures(cached);setLoading(false);return;}}
     const prompt=`You are a world-class mentor teaching a 14-year-old beginner.\nWeek topic: "${weekTopic}"\nSubject: "${roadmap.title}"\nToday is Day ${currentDay} of 7 this week.\nFor Day ${currentDay}, cover sub-topics ${(currentDay-1)*5+1} to ${currentDay*5} of "${weekTopic}". Do NOT repeat previous days.\nGenerate EXACTLY 5 lectures. Return ONLY valid JSON. No markdown, no backticks.\n{"lectures":[{"num":1,"title":"Clear concise title","coreIdea":"2-3 sentences","example":"Real-world example","action":"One task","mistake":"One mistake","takeaway":"One sentence"},{"num":2,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":3,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":4,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":5,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"...","homework":["Task 1","Task 2"]}]}`;
-    let raw="";
-    try{raw=await askClaude([{role:"user",content:prompt}]);}catch{raw="";}
-    if(raw?.trim()){
-      try{let c=raw.trim().replace(/```json|```/gi,"").replace(/,(\s*[}\]])/g,"$1");const m=c.match(/\{[\s\S]*\}/);
-        if(m){const p=JSON.parse(m[0]);const a=p.lectures&&Array.isArray(p.lectures)?p.lectures:[];if(a.length>=3){setLectures(a);if(!isDemo&&user?.id)await saveCachedLectures(user.id,cacheKey,a);setLoading(false);return;}}
-      }catch(e){console.warn("Parse failed:",e.message);}
+    // Retry once (real content > filler). A retry also gets a fresh shot at
+    // askClaude's session-refresh check above, so a transient 401 self-heals.
+    let parsed=null;
+    for(let attempt=0; attempt<2 && !parsed; attempt++){
+      let raw="";
+      try{raw=await askClaude([{role:"user",content:prompt}]);}catch{raw="";}
+      if(raw?.trim()){
+        try{
+          let c=raw.trim().replace(/```json|```/gi,"").replace(/,(\s*[}\]])/g,"$1");
+          const m=c.match(/\{[\s\S]*\}/);
+          if(m){const p=JSON.parse(m[0]);const a=p.lectures&&Array.isArray(p.lectures)?p.lectures:[];if(a.length>=3)parsed=a;}
+        }catch(e){console.warn("Parse failed:",e.message);}
+      }
     }
-    setLectures(Array.from({length:5},(_,i)=>({num:i+1,title:`${weekTopic} — Part ${i+1}`,coreIdea:`This covers a key aspect of ${weekTopic}.`,example:`In ${roadmap.title}, this appears when working on real projects.`,action:`Spend 10 minutes applying this today.`,mistake:`Beginners often skip this — don't.`,takeaway:`Mastering this gives you a real edge.`,homework:i===4?["Find a real-world example","Apply today's concepts"]:null})));
+    if(parsed){
+      setLectures(parsed);
+      if(!isDemo&&user?.id)await saveCachedLectures(user.id,cacheKey,parsed);
+      setLoading(false);
+      return;
+    }
+    // Both attempts failed — show an honest error with a retry action instead
+    // of silently serving generic filler content (title-only, no real substance).
+    setLectureError(true);
     setLoading(false);
   }, [currentMonth, currentWeek, currentDay, isDemo, user?.id, weekTopic, roadmap.title]);
 
@@ -1724,6 +1750,16 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
       <div style={{textAlign:"center"}}>
         <p className="learn-loading-text">Preparing Day {currentDay} lectures…</p>
         <p className="learn-loading-sub">{weekTopic}</p>
+      </div>
+    </div>
+  );
+
+  if(lectureError)return(
+    <div className="learn-loading page container">
+      <div style={{textAlign:"center"}}>
+        <p className="learn-loading-text">Couldn't generate today's lecture.</p>
+        <p className="learn-loading-sub">This usually clears up on retry — sometimes a session hiccup or a slow connection.</p>
+        <button className="btn btn-primary" style={{marginTop:16}} onClick={loadLectures}>Try again</button>
       </div>
     </div>
   );
