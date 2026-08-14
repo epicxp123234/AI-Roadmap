@@ -81,6 +81,13 @@ function getKnownDeviceUser() {
   } catch { return null; }
 }
 
+function withTimeout(promise, ms = 8000, fallback = null) {
+  return Promise.race([
+    promise,
+    new Promise(resolve => setTimeout(() => resolve(fallback), ms))
+  ]);
+}
+
 async function askClaude(messages) {
   const userMessage = messages.find(m => m.role === "user")?.content || "";
   try {
@@ -1668,7 +1675,7 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
   const loadLectures=useCallback(async()=>{
     setLoading(true);
     const cacheKey=`${roadmapSlug(roadmap)}-m${currentMonth}w${currentWeek}d${currentDay}`;
-    if(!isDemo&&user?.id){const cached=await getCachedLectures(user.id,cacheKey);if(cached&&cached.length>=3){setLectures(cached);setLoading(false);return;}}
+    if(!isDemo&&user?.id){const cached=await withTimeout(getCachedLectures(user.id,cacheKey), 6000, null);if(cached&&cached.length>=3){setLectures(cached);setLoading(false);return;}}
     const prompt=`You are a world-class mentor teaching a 14-year-old beginner.\nWeek topic: "${weekTopic}"\nSubject: "${roadmap.title}"\nToday is Day ${currentDay} of 7 this week.\nFor Day ${currentDay}, cover sub-topics ${(currentDay-1)*5+1} to ${currentDay*5} of "${weekTopic}". Do NOT repeat previous days.\nGenerate EXACTLY 5 lectures. Return ONLY valid JSON. No markdown, no backticks.\n{"lectures":[{"num":1,"title":"Clear concise title","coreIdea":"2-3 sentences","example":"Real-world example","action":"One task","mistake":"One mistake","takeaway":"One sentence"},{"num":2,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":3,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":4,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":5,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"...","homework":["Task 1","Task 2"]}]}`;
     let raw="";
     try{raw=await askClaude([{role:"user",content:prompt}]);}catch{raw="";}
@@ -2077,10 +2084,10 @@ export default function App() {
 
   const loadUserData=async(authUser)=>{
     setUser(authUser);
-    const prof=await getProfile(authUser.id);setProfile(prof);
+    const prof=await withTimeout(getProfile(authUser.id), 8000, null);setProfile(prof);
     saveKnownDeviceUser(authUser, prof);
-    const rm=await getRoadmap(authUser.id);
-    const pg=await getProgress(authUser.id);
+    const rm=await withTimeout(getRoadmap(authUser.id), 8000, null);
+    const pg=await withTimeout(getProgress(authUser.id), 8000, initialProgressFields());
     const today=new Date().toISOString().slice(0,10);
 
     if(rm?.data){
