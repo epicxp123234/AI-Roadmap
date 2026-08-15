@@ -2083,6 +2083,7 @@ function WeeklyTest({ progress, roadmap }) {
 // ── App ────────────────────────────────────────────────────────────────────
 export default function App() {
   const[page,setPage]=useState("loading");
+  const[loadTimedOut,setLoadTimedOut]=useState(false);
   const[user,setUser]=useState(null);
   const[profile,setProfile]=useState(null);
   const[roadmap,setRoadmap]=useState(null);
@@ -2120,10 +2121,26 @@ export default function App() {
 
   const loadUserData=async(authUser)=>{
     setUser(authUser);
-    const prof=await withTimeout(getProfile(authUser.id), 8000, null);setProfile(prof);
+    setLoadTimedOut(false);
+    // Run these in parallel — previously sequential, which meant up to
+    // 3x 8s = 24s of dead time on login under any real backend latency.
+    // A distinct sentinel (not null) marks "timed out" so we never confuse
+    // a slow response with a genuine "this user has no roadmap yet" answer.
+    const TIMEOUT_MARK = "__TIMEOUT__";
+    const [prof, rm, pg] = await Promise.all([
+      withTimeout(getProfile(authUser.id), 10000, TIMEOUT_MARK),
+      withTimeout(getRoadmap(authUser.id), 10000, TIMEOUT_MARK),
+      withTimeout(getProgress(authUser.id), 10000, TIMEOUT_MARK),
+    ]);
+    if(prof===TIMEOUT_MARK || rm===TIMEOUT_MARK || pg===TIMEOUT_MARK){
+      // Genuinely unknown state (slow network/backend) — do NOT guess this
+      // means "new user". Show a retry instead of silently onboarding them
+      // and overwriting real progress.
+      setLoadTimedOut(true);
+      return;
+    }
+    setProfile(prof);
     saveKnownDeviceUser(authUser, prof);
-    const rm=await withTimeout(getRoadmap(authUser.id), 8000, null);
-    const pg=await withTimeout(getProgress(authUser.id), 8000, initialProgressFields());
     const today=new Date().toISOString().slice(0,10);
 
     if(rm?.data){
@@ -2182,6 +2199,14 @@ export default function App() {
 
   const showNav=page!=="loading";
   const navUser=isDemo?{email:"demo@velorn.app"}:user;
+
+  if(page==="loading"&&loadTimedOut)return(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",flexDirection:"column",gap:14,background:"#0e0c0a",padding:24,textAlign:"center"}}>
+      <p style={{fontSize:11,color:"#5a5248",fontFamily:"'DM Mono',monospace",letterSpacing:"0.1em",textTransform:"uppercase"}}>Velorn</p>
+      <p style={{fontSize:14,color:"#c9c2b6",maxWidth:280}}>Taking longer than usual to load your account.</p>
+      <button className="btn btn-primary" onClick={()=>loadUserData(user)}>Try again</button>
+    </div>
+  );
 
   if(page==="loading")return(
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",flexDirection:"column",gap:10,background:"#0e0c0a"}}>
