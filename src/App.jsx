@@ -1693,7 +1693,7 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
     let parsed=null;
     for(let attempt=0; attempt<2 && !parsed; attempt++){
       let raw="";
-      try{raw=await askClaude([{role:"user",content:prompt}]);}catch{raw="";}
+      try{raw=await withTimeout(askClaude([{role:"user",content:prompt}]), 12000, "");}catch{raw="";}
       if(raw?.trim()){
         try{
           let c=raw.trim().replace(/```json|```/gi,"").replace(/,(\s*[}\]])/g,"$1");
