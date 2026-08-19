@@ -656,8 +656,8 @@ const css = `
   .prof-figure-wrap{animation:float 4s ease-in-out infinite;}
 
   /* ── Teach Me / Child Bot ── */
-  .teach-btn{display:flex;align-items:center;gap:8px;padding:12px 18px;background:var(--child-light);border:1px solid var(--child-border);border-radius:10px;cursor:pointer;transition:all 0.2s;color:var(--child);font-weight:600;font-size:13px;font-family:var(--font);width:100%;}
-  .teach-btn:hover{background:rgba(163,103,47,0.18);transform:translateY(-1px);box-shadow:0 4px 16px rgba(163,103,47,0.15);}
+  .teach-btn{display:flex;align-items:center;gap:8px;padding:12px 18px;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;cursor:pointer;transition:all 0.2s;color:var(--ink);font-weight:600;font-size:13px;font-family:var(--font);width:100%;}
+  .teach-btn:hover{background:var(--surface3);border-color:var(--accent2);transform:translateY(-1px);box-shadow:0 4px 16px rgba(74,90,53,0.15);}
   .teach-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:800;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(10px);}
   .teach-modal{background:var(--surface);border:1px solid var(--border2);border-radius:16px;width:100%;max-width:580px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column;animation:welcomePop 0.4s cubic-bezier(0.22,1,0.36,1) both;}
   .teach-modal-header{padding:20px 24px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-shrink:0;}
@@ -1832,7 +1832,7 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
               <ChildBotAvatar size={24} mood="curious" />
               <div style={{ flex: 1, textAlign: "left" }}>
                 <div style={{ fontSize: 13, fontWeight: 600 }}>Teach Me!</div>
-                <div style={{ fontSize: 10, color: "rgba(163,103,47,0.7)", fontFamily: "var(--font-mono)", fontWeight: 400 }}>Feynman Technique</div>
+                <div style={{ fontSize: 10, color: "var(--muted)", fontFamily: "var(--font-mono)", fontWeight: 400 }}>Feynman Technique</div>
               </div>
             </button>
 
