@@ -1886,6 +1886,19 @@ function Dashboard({ user, roadmap, progress, onUpdateProgress, onNav, isDemo })
         </div>
       )}
 
+      {!isDemo && (
+        <div className="card card-p" style={{marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",borderLeft:"2px solid var(--gold)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <div style={{width:34,height:34,borderRadius:8,background:"var(--surface2)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--accent2)",flexShrink:0}}><Icon.Users/></div>
+            <div>
+              <div style={{fontSize:13,fontWeight:600,marginBottom:2}}>New: Find friends & study together</div>
+              <div style={{fontSize:12,color:"var(--muted)"}}>Search other students, add them, and keep each other on track.</div>
+            </div>
+          </div>
+          <button className="btn btn-secondary btn-sm row gap-6" onClick={()=>onNav("friends")}><Icon.UserPlus/>Find Friends</button>
+        </div>
+      )}
+
       {week&&(
         <div className="card card-p">
           <p style={{fontSize:10,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.1em",color:"var(--muted)",marginBottom:8,fontFamily:"var(--font-mono)"}}>Week {currentWeek} Goal</p>
