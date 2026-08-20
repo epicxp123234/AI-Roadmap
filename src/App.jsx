@@ -1265,8 +1265,8 @@ function Landing({ onStart, onDemo, onTrack }) {
       {/* ── Three steps ── */}
       <section style={{padding:"0 24px 96px"}}>
         <div className="container">
-          {[{n:"01",title:"Pick any topic",desc:"Chess, Python, guitar, trading, whatever. Type it in and get a 6-month plan broken into daily, doable pieces."},{n:"02",title:"Professor Max teaches",desc:"Five short lectures a day, written for the topic you actually chose, not a generic template stretched to fit."},{n:"03",title:"You explain it to Pip",desc:"A curious AI kid who knows nothing and asks \"why\" a lot. Jargon gets you a low score. Plain words get you a 10."}].map((f,i)=>(
-            <div key={f.n} style={{display:"flex",alignItems:"center",gap:32,padding:"38px 0",borderBottom:i<2?"1px solid var(--border)":"none",borderTop:i===0?"1px solid var(--border)":"none"}}>
+          {[{n:"01",title:"Pick any topic",desc:"Chess, Python, guitar, trading, whatever. Type it in and get a 6-month plan broken into daily, doable pieces."},{n:"02",title:"Professor Max teaches",desc:"Five short lectures a day, written for the topic you actually chose, not a generic template stretched to fit."},{n:"03",title:"You explain it to Pip",desc:"A curious AI kid who knows nothing and asks \"why\" a lot. Jargon gets you a low score. Plain words get you a 10."},{n:"04",title:"Find friends, study together",desc:"Search for other students, add them, and keep each other going. Studying alone is optional now."}].map((f,i)=>(
+            <div key={f.n} style={{display:"flex",alignItems:"center",gap:32,padding:"38px 0",borderBottom:i<3?"1px solid var(--border)":"none",borderTop:i===0?"1px solid var(--border)":"none"}}>
               <p style={{fontFamily:"var(--font-display)",fontSize:"clamp(50px,7vw,88px)",fontStyle:"italic",fontWeight:500,color:"var(--khaki)",lineHeight:1,width:140,flexShrink:0}}>{f.n}</p>
               <div style={{flex:1}}>
                 <h3 style={{fontFamily:"var(--font-display)",fontSize:"clamp(19px,2.2vw,27px)",fontWeight:500,color:"var(--ink)",marginBottom:8}}>{f.title}</h3>
