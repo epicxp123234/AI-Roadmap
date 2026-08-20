@@ -1225,7 +1225,7 @@ function Landing({ onStart, onDemo, onTrack }) {
         </div>
 
         <p style={{fontSize:"clamp(14px,1.7vw,17px)",color:"var(--muted)",lineHeight:1.8,maxWidth:480,margin:"0 auto 34px"}}>
-          Pick any skill. Get a 6-month roadmap split into daily lectures, then teach each one back to a curious AI student who keeps asking "why" until it actually holds up.
+          Pick any skill. Get a 6-month roadmap split into daily lectures, then teach each one back to a curious AI student who keeps asking "why" until it actually holds up. <strong style={{color:"var(--ink)",fontWeight:600}}>Then find friends on Velorn and learn together.</strong>
         </p>
 
         <div style={{display:"flex",justifyContent:"center",marginBottom:16}}>
