@@ -132,6 +132,35 @@ function initialProgressFields() { return { current_month:1, current_week:1, cur
 async function saveTaskSubmission(userId, data) { await supabase.from("task_submissions").upsert({ user_id: userId, week_key: data.weekKey, career: data.career, task_title: data.taskTitle, answers: data.answers, feedback: data.feedback, submitted_at: new Date().toISOString() }, { onConflict: "user_id,week_key" }); }
 async function getCachedLectures(userId, key) { const { data } = await supabase.from("lecture_cache").select("lectures").eq("user_id", userId).eq("roadmap_key", key).maybeSingle(); return data?.lectures || null; }
 async function saveCachedLectures(userId, key, lectures) { await supabase.from("lecture_cache").upsert({ user_id: userId, roadmap_key: key, lectures }, { onConflict: "user_id,roadmap_key" }); }
+// ── Friends ──────────────────────────────────────────────────────────────
+async function searchProfiles(query, excludeUserId) {
+  if (!query || !query.trim()) return [];
+  const { data, error } = await supabase.from("profile_search").select("id,full_name").ilike("full_name", `%${query.trim()}%`).neq("id", excludeUserId).limit(15);
+  if (error) return [];
+  return data || [];
+}
+async function getFriendships(userId) {
+  const { data, error } = await supabase.from("friendships").select("*").or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
+  if (error) return [];
+  return data || [];
+}
+async function getProfilesByIds(ids) {
+  if (!ids.length) return {};
+  const { data } = await supabase.from("profile_search").select("id,full_name").in("id", ids);
+  const map = {};
+  (data || []).forEach(p => { map[p.id] = p.full_name; });
+  return map;
+}
+async function sendFriendRequest(requesterId, addresseeId) {
+  return await supabase.from("friendships").insert({ requester_id: requesterId, addressee_id: addresseeId });
+}
+async function respondFriendRequest(id, status) {
+  return await supabase.from("friendships").update({ status, responded_at: new Date().toISOString() }).eq("id", id);
+}
+async function removeFriendship(id) {
+  return await supabase.from("friendships").delete().eq("id", id);
+}
+
 function roadmapSlug(roadmap) {
   const base = roadmap?.trackId || roadmap?.title || "roadmap";
   return String(base).toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,"").slice(0,60) || "roadmap";
@@ -171,6 +200,9 @@ const Icon = {
   Clipboard: ()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>,
   Sun: ()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4.5"/><line x1="12" y1="1.5" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22.5"/><line x1="3.5" y1="12" x2="1" y2="12"/><line x1="23" y1="12" x2="20.5" y2="12"/><line x1="5" y1="5" x2="6.8" y2="6.8"/><line x1="17.2" y1="17.2" x2="19" y2="19"/><line x1="19" y1="5" x2="17.2" y2="6.8"/><line x1="6.8" y1="17.2" x2="5" y2="19"/></svg>,
   Moon: ()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5Z"/></svg>,
+  Users: ()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+  UserPlus: ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="17" y1="11" x2="23" y2="11"/></svg>,
+  Search: ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
 };
 
 // ── Hero illustration: an annotated notebook page, mid-Feynman-technique ───
@@ -1136,12 +1168,12 @@ function EmailSettingsModal({ onClose, userEmail }) {
 // ── Nav ────────────────────────────────────────────────────────────────────
 function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, isDemo, onSignUp, theme, onToggleTheme }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const links = user ? ["dashboard","learn","test","onboard"] : [];
+  const links = user ? ["dashboard","learn","test","friends","onboard"] : [];
   return (
     <>
       <nav className="nav">
         <div className="nav-logo"><div className="nav-logo-dot"/><span>Velorn</span></div>
-        {user && (<div className="nav-links">{links.map(p=>(<button key={p} onClick={()=>{onNav(p);setMobileOpen(false);}} className={`nav-link ${page===p?"active":""}`}>{p==="learn"?"Learn":p==="test"?"Test":p==="onboard"?"New Topic":"Dashboard"}</button>))}</div>)}
+        {user && (<div className="nav-links">{links.map(p=>(<button key={p} onClick={()=>{onNav(p);setMobileOpen(false);}} className={`nav-link ${page===p?"active":""}`}>{p==="learn"?"Learn":p==="test"?"Test":p==="friends"?"Friends":p==="onboard"?"New Topic":"Dashboard"}</button>))}</div>)}
         <div className="row gap-8">
           <button onClick={onToggleTheme} className="theme-toggle" aria-label="Toggle light or dark mode" title={theme==="dark"?"Switch to light mode":"Switch to dark mode"}>
             {theme==="dark"?<Icon.Sun/>:<Icon.Moon/>}
@@ -1156,7 +1188,7 @@ function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, isDemo, onSignU
       </nav>
       {user && (
         <div className={`mobile-nav ${mobileOpen?"open":""}`}>
-          {links.map(p=>(<button key={p} onClick={()=>{onNav(p);setMobileOpen(false);}} className={`mobile-nav-link ${page===p?"active":""}`}>{p==="learn"?"Learn":p==="test"?"Test":p==="onboard"?"New Topic":"Dashboard"}</button>))}
+          {links.map(p=>(<button key={p} onClick={()=>{onNav(p);setMobileOpen(false);}} className={`mobile-nav-link ${page===p?"active":""}`}>{p==="learn"?"Learn":p==="test"?"Test":p==="friends"?"Friends":p==="onboard"?"New Topic":"Dashboard"}</button>))}
           <button className="mobile-nav-link" onClick={()=>{onOpenEmailSettings();setMobileOpen(false);}}>Reminders</button>
           <button className="mobile-nav-link" style={{color:"var(--ember)"}} onClick={()=>{onLogout();setMobileOpen(false);}}>Sign Out</button>
         </div>
@@ -1488,6 +1520,206 @@ function WeekJourneyMap({ week, currentMonth, currentWeek, currentDay, completed
           <span style={{fontSize:9,marginTop:6,color:"var(--subtle)",fontFamily:"var(--font-mono)",whiteSpace:"nowrap"}}>More ahead…</span>
         </div>
       </div>
+    </div>
+  );
+}
+
+function Friends({ user, isDemo }) {
+  const [tab, setTab] = useState("friends"); // friends | requests | find
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [friendships, setFriendships] = useState([]);
+  const [profileMap, setProfileMap] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [sentIds, setSentIds] = useState(new Set());
+
+  const refresh = useCallback(async () => {
+    if (!user?.id) return;
+    setLoading(true);
+    const fs = await getFriendships(user.id);
+    setFriendships(fs);
+    const otherIds = [...new Set(fs.map(f => f.requester_id === user.id ? f.addressee_id : f.requester_id))];
+    const map = await getProfilesByIds(otherIds);
+    setProfileMap(map);
+    setLoading(false);
+  }, [user?.id]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  useEffect(() => {
+    if (!query.trim()) { setResults([]); return; }
+    const t = setTimeout(async () => {
+      setSearching(true);
+      const r = await searchProfiles(query, user.id);
+      setResults(r);
+      setSearching(false);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [query, user?.id]);
+
+  const friendshipWith = (id) => friendships.find(f => f.requester_id === id || f.addressee_id === id);
+
+  const handleAdd = async (targetId) => {
+    if (isDemo) { alert("Sign up to add friends."); return; }
+    setSentIds(s => new Set([...s, targetId]));
+    await sendFriendRequest(user.id, targetId);
+    await refresh();
+  };
+  const handleAccept = async (f) => { await respondFriendRequest(f.id, "accepted"); await refresh(); };
+  const handleDecline = async (f) => { await removeFriendship(f.id); await refresh(); };
+  const handleRemove = async (f) => { if (!confirm("Remove this friend?")) return; await removeFriendship(f.id); await refresh(); };
+  const handleCancel = async (f) => { await removeFriendship(f.id); await refresh(); };
+
+  const accepted = friendships.filter(f => f.status === "accepted");
+  const incoming = friendships.filter(f => f.status === "pending" && f.addressee_id === user.id);
+  const outgoing = friendships.filter(f => f.status === "pending" && f.requester_id === user.id);
+
+  const nameFor = (f) => {
+    const otherId = f.requester_id === user.id ? f.addressee_id : f.requester_id;
+    return profileMap[otherId] || "Student";
+  };
+  const initials = (name) => (name || "?").trim().split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
+
+  const TABS = [
+    { key: "friends", label: "Friends", count: accepted.length },
+    { key: "requests", label: "Requests", count: incoming.length },
+    { key: "find", label: "Find Students", count: null },
+  ];
+
+  return (
+    <div className="page container" style={{ paddingTop: 90, paddingBottom: 64, maxWidth: 760 }}>
+      <div style={{ marginBottom: 24 }}>
+        <p className="label" style={{ marginBottom: 4 }}>Social</p>
+        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 32, fontWeight: 400 }}>Friends</h2>
+        <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>Find other students, connect, and study together.</p>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 24, borderBottom: "1px solid var(--border)", paddingBottom: 0 }}>
+        {TABS.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              padding: "10px 4px", marginRight: 20, fontSize: 13, fontFamily: "var(--font)",
+              color: tab === t.key ? "var(--ink)" : "var(--muted)",
+              borderBottom: tab === t.key ? "2px solid var(--accent2)" : "2px solid transparent",
+              display: "flex", alignItems: "center", gap: 6, fontWeight: tab === t.key ? 600 : 400,
+            }}>
+            {t.label}
+            {t.count > 0 && <span className="badge badge-blue" style={{ fontSize: 10, padding: "1px 7px" }}>{t.count}</span>}
+          </button>
+        ))}
+      </div>
+
+      {isDemo && (
+        <div className="card" style={{ padding: 16, marginBottom: 20, fontSize: 13, color: "var(--muted)" }}>
+          You're in demo mode — sign up to add real friends.
+        </div>
+      )}
+
+      {tab === "find" && (
+        <div>
+          <p className="label" style={{ marginBottom: 10 }}>Search by name</p>
+          <div style={{ position: "relative", marginBottom: 20 }}>
+            <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }}><Icon.Search /></span>
+            <input className="input" style={{ width: "100%", paddingLeft: 36 }} placeholder="Type a student's name…" value={query} onChange={e => setQuery(e.target.value)} />
+          </div>
+          {searching && <p style={{ fontSize: 13, color: "var(--muted)" }}>Searching…</p>}
+          {!searching && query.trim() && results.length === 0 && (
+            <p style={{ fontSize: 13, color: "var(--muted)" }}>No students found matching "{query.trim()}".</p>
+          )}
+          <div className="stack gap-8">
+            {results.map(r => {
+              const existing = friendshipWith(r.id);
+              const alreadySent = sentIds.has(r.id);
+              return (
+                <div key={r.id} className="card" style={{ padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--surface2)", border: "1px solid var(--border2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600, color: "var(--ink2)", fontFamily: "var(--font-mono)" }}>{initials(r.full_name)}</div>
+                    <span style={{ fontSize: 14, fontWeight: 500 }}>{r.full_name}</span>
+                  </div>
+                  {existing?.status === "accepted" ? (
+                    <span className="badge badge-neutral">Friends</span>
+                  ) : existing?.status === "pending" ? (
+                    <span className="badge badge-neutral">Pending</span>
+                  ) : alreadySent ? (
+                    <span className="badge badge-neutral">Sent</span>
+                  ) : (
+                    <button className="btn btn-secondary btn-sm row gap-6" onClick={() => handleAdd(r.id)}><Icon.UserPlus />Add</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {tab === "requests" && (
+        <div className="stack gap-24">
+          <div>
+            <p className="label" style={{ marginBottom: 10 }}>Incoming ({incoming.length})</p>
+            {loading ? <p style={{ fontSize: 13, color: "var(--muted)" }}>Loading…</p> : incoming.length === 0 ? (
+              <p style={{ fontSize: 13, color: "var(--muted)" }}>No pending requests.</p>
+            ) : (
+              <div className="stack gap-8">
+                {incoming.map(f => (
+                  <div key={f.id} className="card" style={{ padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--surface2)", border: "1px solid var(--border2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600, color: "var(--ink2)", fontFamily: "var(--font-mono)" }}>{initials(nameFor(f))}</div>
+                      <span style={{ fontSize: 14, fontWeight: 500 }}>{nameFor(f)}</span>
+                    </div>
+                    <div className="row gap-8">
+                      <button className="btn btn-primary btn-sm row gap-6" onClick={() => handleAccept(f)}><Icon.Check />Accept</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => handleDecline(f)}>Decline</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <p className="label" style={{ marginBottom: 10 }}>Sent ({outgoing.length})</p>
+            {outgoing.length === 0 ? (
+              <p style={{ fontSize: 13, color: "var(--muted)" }}>No sent requests.</p>
+            ) : (
+              <div className="stack gap-8">
+                {outgoing.map(f => (
+                  <div key={f.id} className="card" style={{ padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--surface2)", border: "1px solid var(--border2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600, color: "var(--ink2)", fontFamily: "var(--font-mono)" }}>{initials(nameFor(f))}</div>
+                      <span style={{ fontSize: 14, fontWeight: 500 }}>{nameFor(f)}</span>
+                    </div>
+                    <button className="btn btn-ghost btn-sm" onClick={() => handleCancel(f)}>Cancel</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {tab === "friends" && (
+        <div>
+          {loading ? <p style={{ fontSize: 13, color: "var(--muted)" }}>Loading…</p> : accepted.length === 0 ? (
+            <div className="card" style={{ padding: 28, textAlign: "center" }}>
+              <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 12 }}>No friends yet.</p>
+              <button className="btn btn-secondary btn-sm" onClick={() => setTab("find")}>Find students to add</button>
+            </div>
+          ) : (
+            <div className="stack gap-8">
+              {accepted.map(f => (
+                <div key={f.id} className="card" style={{ padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--surface2)", border: "1px solid var(--border2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600, color: "var(--ink2)", fontFamily: "var(--font-mono)" }}>{initials(nameFor(f))}</div>
+                    <span style={{ fontSize: 14, fontWeight: 500 }}>{nameFor(f)}</span>
+                  </div>
+                  <button className="btn btn-ghost btn-sm" onClick={() => handleRemove(f)}>Remove</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -2263,6 +2495,7 @@ export default function App() {
       {page==="dashboard"&&roadmap&&progress&&<Dashboard user={user} roadmap={roadmap} progress={progress} onUpdateProgress={p=>setProgress(p)} onNav={setPage} isDemo={isDemo}/>}
       {page==="learn"&&roadmap&&progress&&<Learn user={user} progress={progress} roadmap={roadmap} onUpdateProgress={p=>setProgress(p)} isDemo={isDemo} onSignUp={()=>{exitDemo();setPage("auth");}}/>}
       {page==="test"&&roadmap&&progress&&<WeeklyTest progress={progress} roadmap={roadmap}/>}
+      {page==="friends"&&user&&<Friends user={user} isDemo={isDemo}/>}
     </>
   );
 }
