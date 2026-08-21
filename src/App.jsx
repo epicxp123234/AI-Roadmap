@@ -168,7 +168,12 @@ async function createLobby(hostId, topic, maxMembers, inviteeIds) {
   const rows = [{ lobby_id: lobby.id, user_id: hostId, status: "joined", joined_at: new Date().toISOString() },
     ...inviteeIds.map(id => ({ lobby_id: lobby.id, user_id: id, status: "invited" }))];
   const { error: memberErr } = await supabase.from("lobby_members").insert(rows);
-  return { lobby, error: memberErr };
+  if (memberErr) {
+    // roll back the orphaned lobby so it doesn't sit invisible with no members
+    await supabase.from("lobbies").delete().eq("id", lobby.id);
+    return { error: memberErr };
+  }
+  return { lobby, error: null };
 }
 async function getMyLobbies(userId) {
   const { data: memberships, error } = await supabase.from("lobby_members").select("*, lobbies(*)").eq("user_id", userId);
@@ -1707,13 +1712,20 @@ function LobbiesTab({ user, accepted, profileMap, isDemo }) {
     return next;
   });
 
+  const [createErr, setCreateErr] = useState("");
+  const [creatingBusy, setCreatingBusy] = useState(false);
   const handleCreate = async () => {
     if (isDemo) { alert("Sign up to create a lobby."); return; }
     if (!topic.trim()) return;
+    setCreateErr(""); setCreatingBusy(true);
     const { error } = await createLobby(user.id, topic.trim(), 6, [...selectedFriends]);
+    setCreatingBusy(false);
     if (!error) {
       setTopic(""); setSelectedFriends(new Set()); setCreating(false);
       await refresh();
+    } else {
+      console.error("createLobby failed:", error);
+      setCreateErr(error.message || "Couldn't create the lobby. Try again.");
     }
   };
 
@@ -1763,9 +1775,10 @@ function LobbiesTab({ user, accepted, profileMap, isDemo }) {
             </div>
           )}
           <div className="row gap-8">
-            <button className="btn btn-primary btn-sm" onClick={handleCreate} disabled={!topic.trim()}>Create</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => { setCreating(false); setTopic(""); setSelectedFriends(new Set()); }}>Cancel</button>
+            <button className="btn btn-primary btn-sm" onClick={handleCreate} disabled={!topic.trim() || creatingBusy}>{creatingBusy ? "Creating…" : "Create"}</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setCreating(false); setTopic(""); setSelectedFriends(new Set()); setCreateErr(""); }}>Cancel</button>
           </div>
+          {createErr && <p style={{ fontSize: 12, color: "var(--ember)", marginTop: 10 }}>{createErr}</p>}
         </div>
       )}
 
