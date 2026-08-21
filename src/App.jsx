@@ -161,6 +161,46 @@ async function removeFriendship(id) {
   return await supabase.from("friendships").delete().eq("id", id);
 }
 
+// ── Lobbies ──────────────────────────────────────────────────────────────
+async function createLobby(hostId, topic, maxMembers, inviteeIds) {
+  const { data: lobby, error } = await supabase.from("lobbies").insert({ host_id: hostId, topic, max_members: maxMembers }).select().single();
+  if (error || !lobby) return { error };
+  const rows = [{ lobby_id: lobby.id, user_id: hostId, status: "joined", joined_at: new Date().toISOString() },
+    ...inviteeIds.map(id => ({ lobby_id: lobby.id, user_id: id, status: "invited" }))];
+  const { error: memberErr } = await supabase.from("lobby_members").insert(rows);
+  return { lobby, error: memberErr };
+}
+async function getMyLobbies(userId) {
+  const { data: memberships, error } = await supabase.from("lobby_members").select("*, lobbies(*)").eq("user_id", userId);
+  if (error) return [];
+  return (memberships || []).filter(m => m.lobbies).map(m => ({ ...m.lobbies, myStatus: m.status }));
+}
+async function getLobbyRoster(lobbyId) {
+  const { data, error } = await supabase.from("lobby_members").select("user_id,status").eq("lobby_id", lobbyId);
+  if (error) return [];
+  return data || [];
+}
+async function respondLobbyInvite(lobbyId, userId, status) {
+  return await supabase.from("lobby_members").update({ status, joined_at: status === "joined" ? new Date().toISOString() : null }).eq("lobby_id", lobbyId).eq("user_id", userId);
+}
+async function leaveLobby(lobbyId, userId) {
+  return await supabase.from("lobby_members").delete().eq("lobby_id", lobbyId).eq("user_id", userId);
+}
+async function getLobbyMessages(lobbyId) {
+  const { data, error } = await supabase.from("lobby_messages").select("*").eq("lobby_id", lobbyId).order("created_at", { ascending: true }).limit(200);
+  if (error) return [];
+  return data || [];
+}
+async function sendLobbyMessage(lobbyId, userId, message) {
+  return await supabase.from("lobby_messages").insert({ lobby_id: lobbyId, user_id: userId, message });
+}
+function subscribeLobbyMessages(lobbyId, onInsert) {
+  const channel = supabase.channel(`lobby:${lobbyId}`)
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "lobby_messages", filter: `lobby_id=eq.${lobbyId}` }, (payload) => onInsert(payload.new))
+    .subscribe();
+  return () => supabase.removeChannel(channel);
+}
+
 function roadmapSlug(roadmap) {
   const base = roadmap?.trackId || roadmap?.title || "roadmap";
   return String(base).toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,"").slice(0,60) || "roadmap";
@@ -1524,6 +1564,211 @@ function WeekJourneyMap({ week, currentMonth, currentWeek, currentDay, completed
   );
 }
 
+function LobbyRoom({ user, lobby, roster, profileMap, onBack, onLeave }) {
+  const [messages, setMessages] = useState([]);
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(true);
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    let unsub = () => {};
+    (async () => {
+      const msgs = await getLobbyMessages(lobby.id);
+      setMessages(msgs);
+      setLoading(false);
+      unsub = subscribeLobbyMessages(lobby.id, (m) => setMessages(prev => prev.some(p => p.id === m.id) ? prev : [...prev, m]));
+    })();
+    return () => unsub();
+  }, [lobby.id]);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages]);
+
+  const nameFor = (uid) => uid === user.id ? "You" : (profileMap[uid] || "Student");
+  const initials = (name) => (name || "?").trim().split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
+
+  const handleSend = async () => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setText("");
+    const { error } = await sendLobbyMessage(lobby.id, user.id, trimmed);
+    if (error) setMessages(prev => [...prev, { id: `local-${Date.now()}`, lobby_id: lobby.id, user_id: user.id, message: trimmed, created_at: new Date().toISOString() }]);
+  };
+
+  const joinedRoster = roster.filter(r => r.status === "joined");
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 90px)", maxHeight: 640 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button className="btn btn-ghost btn-sm" onClick={onBack}>← Back</button>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 600 }}>{lobby.topic}</div>
+            <div style={{ fontSize: 12, color: "var(--muted)" }}>{joinedRoster.length} in the lobby</div>
+          </div>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={onLeave}>Leave</button>
+      </div>
+
+      <div style={{ display: "flex", gap: -6, marginBottom: 12 }}>
+        {joinedRoster.map(r => (
+          <div key={r.user_id} title={nameFor(r.user_id)} style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--surface2)", border: "2px solid var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 600, color: "var(--ink2)", fontFamily: "var(--font-mono)", marginRight: -8 }}>{initials(nameFor(r.user_id))}</div>
+        ))}
+      </div>
+
+      <div ref={scrollRef} className="card" style={{ flex: 1, overflowY: "auto", padding: 16, marginBottom: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+        {loading ? <p style={{ fontSize: 13, color: "var(--muted)" }}>Loading messages…</p> :
+          messages.length === 0 ? <p style={{ fontSize: 13, color: "var(--muted)" }}>No messages yet. Say hi.</p> :
+          messages.map(m => {
+            const mine = m.user_id === user.id;
+            return (
+              <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start" }}>
+                <span style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2 }}>{nameFor(m.user_id)}</span>
+                <span style={{ fontSize: 13, background: mine ? "var(--accent2)" : "var(--surface2)", color: mine ? "#fff" : "var(--ink)", padding: "8px 12px", borderRadius: 12, maxWidth: "75%", wordBreak: "break-word" }}>{m.message}</span>
+              </div>
+            );
+          })
+        }
+      </div>
+
+      <div style={{ display: "flex", gap: 8 }}>
+        <input className="input" style={{ flex: 1 }} placeholder="Type a message…" value={text}
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") handleSend(); }} />
+        <button className="btn btn-primary btn-sm" onClick={handleSend}>Send</button>
+      </div>
+    </div>
+  );
+}
+
+function LobbiesTab({ user, accepted, profileMap, isDemo }) {
+  const [lobbies, setLobbies] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [topic, setTopic] = useState("");
+  const [selectedFriends, setSelectedFriends] = useState(new Set());
+  const [activeLobby, setActiveLobby] = useState(null);
+  const [activeRoster, setActiveRoster] = useState([]);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    const l = await getMyLobbies(user.id);
+    setLobbies(l.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+    setLoading(false);
+  }, [user.id]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const toggleFriend = (id) => setSelectedFriends(s => {
+    const next = new Set(s);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const handleCreate = async () => {
+    if (isDemo) { alert("Sign up to create a lobby."); return; }
+    if (!topic.trim()) return;
+    const { error } = await createLobby(user.id, topic.trim(), 6, [...selectedFriends]);
+    if (!error) {
+      setTopic(""); setSelectedFriends(new Set()); setCreating(false);
+      await refresh();
+    }
+  };
+
+  const openLobby = async (lobby) => {
+    const roster = await getLobbyRoster(lobby.id);
+    setActiveRoster(roster);
+    setActiveLobby(lobby);
+  };
+
+  const handleAccept = async (lobby) => { await respondLobbyInvite(lobby.id, user.id, "joined"); await refresh(); };
+  const handleDecline = async (lobby) => { await respondLobbyInvite(lobby.id, user.id, "declined"); await refresh(); };
+  const handleLeave = async () => { if (activeLobby) { await leaveLobby(activeLobby.id, user.id); } setActiveLobby(null); await refresh(); };
+
+  if (activeLobby) {
+    return <LobbyRoom user={user} lobby={activeLobby} roster={activeRoster} profileMap={profileMap} onBack={() => setActiveLobby(null)} onLeave={handleLeave} />;
+  }
+
+  const invited = lobbies.filter(l => l.myStatus === "invited");
+  const joined = lobbies.filter(l => l.myStatus === "joined");
+
+  return (
+    <div>
+      {!creating ? (
+        <button className="btn btn-primary btn-sm row gap-6" style={{ marginBottom: 20 }} onClick={() => setCreating(true)}>
+          <Icon.UserPlus />Create Lobby
+        </button>
+      ) : (
+        <div className="card" style={{ padding: 18, marginBottom: 20 }}>
+          <p className="label" style={{ marginBottom: 8 }}>What are you studying?</p>
+          <input className="input" style={{ width: "100%", marginBottom: 14 }} placeholder="e.g. Photosynthesis, Python loops…" value={topic} onChange={e => setTopic(e.target.value)} />
+          <p className="label" style={{ marginBottom: 8 }}>Invite friends</p>
+          {accepted.length === 0 ? (
+            <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 14 }}>Add some friends first to invite them.</p>
+          ) : (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+              {accepted.map(f => {
+                const otherId = f.requester_id === user.id ? f.addressee_id : f.requester_id;
+                const name = profileMap[otherId] || "Student";
+                const selected = selectedFriends.has(otherId);
+                return (
+                  <button key={otherId} onClick={() => toggleFriend(otherId)}
+                    style={{ padding: "7px 14px", borderRadius: 20, border: selected ? "1px solid var(--accent2)" : "1px solid var(--border2)", background: selected ? "var(--accent2)" : "var(--surface2)", color: selected ? "#fff" : "var(--ink)", fontSize: 12, cursor: "pointer" }}>
+                    {name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <div className="row gap-8">
+            <button className="btn btn-primary btn-sm" onClick={handleCreate} disabled={!topic.trim()}>Create</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setCreating(false); setTopic(""); setSelectedFriends(new Set()); }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {loading ? <p style={{ fontSize: 13, color: "var(--muted)" }}>Loading…</p> : (
+        <div className="stack gap-24">
+          {invited.length > 0 && (
+            <div>
+              <p className="label" style={{ marginBottom: 10 }}>Invites ({invited.length})</p>
+              <div className="stack gap-8">
+                {invited.map(l => (
+                  <div key={l.id} className="card" style={{ padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <span style={{ fontSize: 14, fontWeight: 500 }}>{l.topic}</span>
+                    <div className="row gap-8">
+                      <button className="btn btn-primary btn-sm" onClick={() => handleAccept(l)}>Join</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => handleDecline(l)}>Decline</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div>
+            <p className="label" style={{ marginBottom: 10 }}>Your Lobbies ({joined.length})</p>
+            {joined.length === 0 ? (
+              <div className="card" style={{ padding: 28, textAlign: "center" }}>
+                <p style={{ fontSize: 14, color: "var(--muted)" }}>No active lobbies. Create one above.</p>
+              </div>
+            ) : (
+              <div className="stack gap-8">
+                {joined.map(l => (
+                  <div key={l.id} className="card" style={{ padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, cursor: "pointer" }} onClick={() => openLobby(l)}>
+                    <span style={{ fontSize: 14, fontWeight: 500 }}>{l.topic}</span>
+                    <span className="badge badge-neutral">Open →</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Friends({ user, isDemo }) {
   const [tab, setTab] = useState("friends"); // friends | requests | find
   const [query, setQuery] = useState("");
@@ -1585,6 +1830,7 @@ function Friends({ user, isDemo }) {
     { key: "friends", label: "Friends", count: accepted.length },
     { key: "requests", label: "Requests", count: incoming.length },
     { key: "find", label: "Find Students", count: null },
+    { key: "lobbies", label: "Lobbies", count: null },
   ];
 
   return (
@@ -1719,6 +1965,9 @@ function Friends({ user, isDemo }) {
             </div>
           )}
         </div>
+      )}
+      {tab === "lobbies" && (
+        <LobbiesTab user={user} accepted={accepted} profileMap={profileMap} isDemo={isDemo} />
       )}
     </div>
   );
