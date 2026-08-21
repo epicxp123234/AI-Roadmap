@@ -1215,7 +1215,7 @@ function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, isDemo, onSignU
         <div className="nav-logo"><div className="nav-logo-dot"/><span>Velorn</span></div>
         {user && (<div className="nav-links">{links.map(p=>(<button key={p} onClick={()=>{onNav(p);setMobileOpen(false);}} className={`nav-link ${page===p?"active":""}`}>{p==="learn"?"Learn":p==="test"?"Test":p==="friends"?"Friends":p==="onboard"?"New Topic":"Dashboard"}</button>))}</div>)}
         <div className="row gap-8">
-          <button onClick={onToggleTheme} className="theme-toggle" aria-label="Toggle light or dark mode" title={theme==="dark"?"Switch to light mode":"Switch to dark mode"}>
+          <button onClick={onToggleTheme} className="theme-toggle" aria-label="Toggle light or dark mode" title={theme==="dark"?"Switch to light mode":"Switch to dark mode"} style={{width:32,height:32,minWidth:32,minHeight:32,padding:0,borderRadius:999,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--ink2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
             {theme==="dark"?<Icon.Sun/>:<Icon.Moon/>}
           </button>
         
