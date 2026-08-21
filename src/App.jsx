@@ -1242,7 +1242,13 @@ function Landing({ onStart, onDemo, onTrack }) {
   const [typed, setTyped] = useState("");
   const [focused, setFocused] = useState(false);
   const [exIdx, setExIdx] = useState(0);
+  const [shared, setShared] = useState(false);
   useEffect(()=>{const t=setInterval(()=>setExIdx(i=>(i+1)%LANDING_EXAMPLES.length),2400);return()=>clearInterval(t);},[]);
+  const handleShare = async () => {
+    const shareData = { title: "Velorn", text: "I'm learning on Velorn, an AI study app where you actually have to explain what you learn. Join me and let's study together.", url: "https://velorn.vercel.app" };
+    if (navigator.share) { try { await navigator.share(shareData); return; } catch (e) { /* cancelled, fall through */ } }
+    try { await navigator.clipboard.writeText(shareData.url); setShared(true); setTimeout(() => setShared(false), 2200); } catch (e) {}
+  };
   return (
     <div style={{minHeight:"100vh",background:"var(--bg)",overflowX:"hidden"}}>
 
@@ -1302,6 +1308,40 @@ function Landing({ onStart, onDemo, onTrack }) {
         </div>
       </section>
 
+      {/* ── Study With Friends: dedicated feature showcase ── */}
+      <section style={{padding:"90px 24px",background:"var(--sage)"}}>
+        <div className="container">
+          <div style={{textAlign:"center",marginBottom:48}}>
+            <div className="section-label" style={{marginBottom:14,color:"rgba(43,32,19,0.55)",justifyContent:"center",display:"flex"}}>Not Just Another Solo Grind</div>
+            <h2 style={{fontFamily:"var(--font-display)",fontSize:"clamp(28px,4.2vw,54px)",fontStyle:"italic",fontWeight:500,color:"var(--sage-ink)",marginBottom:16}}>
+              Learn with your friends, not alone.
+            </h2>
+            <p style={{fontSize:"clamp(14px,1.6vw,16px)",color:"rgba(43,32,19,0.65)",lineHeight:1.8,maxWidth:560,margin:"0 auto"}}>
+              Velorn isn't just you and an AI anymore. Add real friends, build a lobby, and grind the same topic together in real time.
+            </p>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:20}} className="testimonials-grid">
+            {[
+              {icon:"UserPlus",title:"Add Friends",desc:"Search classmates by name and add them, right from your dashboard. See who's actually grinding, not just who says they are."},
+              {icon:"Users",title:"Create a Lobby",desc:"Pick a topic, invite your friends, and drop into a study lobby together, like starting a game, but it's Photosynthesis."},
+              {icon:"MessageCircle",title:"Live Chat",desc:"Talk it out in real time inside the lobby. Stuck on a problem? Someone in your lobby probably isn't."},
+            ].map(f=>{const Ic=Icon[f.icon];return(
+              <div key={f.title} style={{padding:"28px 24px",background:"var(--surface)"}}>
+                <div style={{width:38,height:38,borderRadius:10,background:"var(--sage-light,var(--bg2))",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--sage-deep)",marginBottom:16}}><Ic/></div>
+                <h3 style={{fontFamily:"var(--font-display)",fontSize:19,fontWeight:500,color:"var(--ink)",marginBottom:8}}>{f.title}</h3>
+                <p style={{fontSize:13,color:"var(--muted)",lineHeight:1.7}}>{f.desc}</p>
+              </div>
+            );})}
+          </div>
+          <div style={{textAlign:"center",marginTop:40}}>
+            <button onClick={handleShare} style={{background:"var(--sage-deep,var(--accent))",color:"#fff",border:"none",fontFamily:"var(--font)",fontWeight:600,fontSize:14,padding:"14px 30px",cursor:"pointer",borderRadius:4}}>
+              {shared ? "Link copied — go send it →" : "Share Velorn with a friend →"}
+            </button>
+            <p style={{fontSize:12,color:"rgba(43,32,19,0.5)",marginTop:12,fontFamily:"var(--font-mono)"}}>Learning is better when someone's doing it with you.</p>
+          </div>
+        </div>
+      </section>
+
       {/* ── Three steps ── */}
       <section style={{padding:"0 24px 96px"}}>
         <div className="container">
@@ -1345,6 +1385,7 @@ function Landing({ onStart, onDemo, onTrack }) {
         <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
           <button style={{background:"var(--bg)",color:"var(--accent)",border:"none",fontFamily:"var(--font)",fontWeight:600,fontSize:14,padding:"14px 30px",cursor:"pointer"}} onClick={onStart}>Build My Roadmap →</button>
           <button style={{background:"transparent",color:"var(--bg)",border:"1px solid color-mix(in srgb,var(--bg) 40%,transparent)",fontFamily:"var(--font)",fontWeight:500,fontSize:14,padding:"14px 30px",cursor:"pointer"}} onClick={onDemo}>See Demo</button>
+          <button style={{background:"transparent",color:"var(--bg)",border:"1px solid color-mix(in srgb,var(--bg) 40%,transparent)",fontFamily:"var(--font)",fontWeight:500,fontSize:14,padding:"14px 30px",cursor:"pointer"}} onClick={handleShare}>{shared?"Link copied →":"Bring a Friend →"}</button>
         </div>
       </section>
     </div>
