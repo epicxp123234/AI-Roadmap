@@ -135,7 +135,12 @@ async function saveCachedLectures(userId, key, lectures) { await supabase.from("
 // ── Friends ──────────────────────────────────────────────────────────────
 async function searchProfiles(query, excludeUserId) {
   if (!query || !query.trim()) return [];
-  const { data, error } = await supabase.from("profile_search").select("id,full_name").ilike("full_name", `%${query.trim()}%`).neq("id", excludeUserId).limit(15);
+  const { data, error } = await supabase.from("profile_search").select("id,full_name,course_title").ilike("full_name", `%${query.trim()}%`).neq("id", excludeUserId).limit(15);
+  if (error) return [];
+  return data || [];
+}
+async function browseProfiles(excludeUserId, limit = 30) {
+  const { data, error } = await supabase.from("profile_search").select("id,full_name,course_title").neq("id", excludeUserId).order("full_name", { ascending: true }).limit(limit);
   if (error) return [];
   return data || [];
 }
@@ -205,10 +210,17 @@ function subscribeLobbyMessages(lobbyId, onInsert) {
     .subscribe();
   return () => supabase.removeChannel(channel);
 }
-async function generateLobbyLecture(topic) {
-  const prompt = `You are Professor Max teaching a small group of teenagers who are studying together in a live study room. Topic: "${topic}".\nWrite ONE focused lecture on this topic, written to be read together as a group before they discuss it. Return ONLY valid JSON, no markdown, no backticks:\n{"title":"Clear concise title","coreIdea":"3-4 sentences explaining the core concept plainly","example":"A concrete real-world example","discuss":"One open question for the group to talk through together","takeaway":"One sentence summary"}`;
+const LOBBY_LECTURE_COUNT = 5;
+
+// Generates lecture N (1-indexed). On the final lecture, bundles a homework
+// question into the SAME call so we never spend a 6th API call on homework.
+async function generateLobbyLectureStep(topic, lectureNumber, priorTitles) {
+  const isLast = lectureNumber === LOBBY_LECTURE_COUNT;
+  const priorLine = priorTitles.length ? `Already covered: ${priorTitles.join("; ")}. Don't repeat these, build on them.` : "This is the first lecture in the series.";
+  const homeworkLine = isLast ? `\nAlso include a "homework" field: one problem the group must solve TOGETHER by discussing it in chat, that draws on all ${LOBBY_LECTURE_COUNT} lectures. Keep it to 1-2 sentences.` : "";
+  const prompt = `You are Professor Max teaching a small group of teenagers studying together live. Topic: "${topic}". This is lecture ${lectureNumber} of ${LOBBY_LECTURE_COUNT} in a short series. ${priorLine}\nWrite ONE focused, self-contained lecture, meant to be read together as a group before discussing.${homeworkLine}\nReturn ONLY valid JSON, no markdown, no backticks:\n{"title":"Clear concise title","coreIdea":"3-4 sentences explaining the core concept plainly","example":"A concrete real-world example","discuss":"One open question for the group to talk through together","takeaway":"One sentence summary"${isLast ? ',"homework":"The group homework problem"' : ""}}`;
   let raw = "";
-  try { raw = await withTimeout(askClaude([{ role: "user", content: prompt }]), 12000, ""); } catch { raw = ""; }
+  try { raw = await withTimeout(askClaude([{ role: "user", content: prompt }]), 14000, ""); } catch { raw = ""; }
   if (!raw?.trim()) return null;
   try {
     const cleaned = raw.trim().replace(/```json|```/gi, "").replace(/,(\s*[}\]])/g, "$1");
@@ -217,8 +229,41 @@ async function generateLobbyLecture(topic) {
     return JSON.parse(m[0]);
   } catch { return null; }
 }
-async function saveLobbyLecture(lobbyId, lectureObj) {
-  return await supabase.from("lobbies").update({ lecture_content: JSON.stringify(lectureObj), lecture_generated_at: new Date().toISOString() }).eq("id", lobbyId).is("lecture_content", null);
+// Atomically appends the lecture (guarded by expectedLen so concurrent
+// members generating at once can't double-append — the loser just gets
+// back whatever the winner produced).
+async function appendLobbyLecture(lobbyId, lectureObj, expectedLen, homeworkQuestion) {
+  const { data, error } = await supabase.rpc("append_lobby_lecture", {
+    p_lobby_id: lobbyId, p_lecture: lectureObj, p_expected_len: expectedLen, p_homework_question: homeworkQuestion || null,
+  });
+  if (error) return { error };
+  const row = Array.isArray(data) ? data[0] : data;
+  return { lectures: row?.lectures || [], success: !!row?.success };
+}
+// Reviews the group's homework answer with a single, deliberately short AI
+// call — the prompt caps the response length so this stays cheap, and the
+// guarded RPC ensures only the FIRST submission for a lobby ever triggers
+// a review; everyone after that just reads the cached feedback.
+async function reviewLobbyHomework(topic, question, answer) {
+  const prompt = `You are Professor Max grading a group homework answer. Topic: "${topic}". Question: "${question}". The group's answer: "${answer}"\nGive brief, encouraging but honest feedback (max 60 words) and a score 0-10. Return ONLY valid JSON, no markdown:\n{"feedback":"...","score":0}`;
+  let raw = "";
+  try { raw = await withTimeout(askClaude([{ role: "user", content: prompt }]), 12000, ""); } catch { raw = ""; }
+  if (!raw?.trim()) return null;
+  try {
+    const cleaned = raw.trim().replace(/```json|```/gi, "").replace(/,(\s*[}\]])/g, "$1");
+    const m = cleaned.match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    const parsed = JSON.parse(m[0]);
+    return { feedback: parsed.feedback || "", score: typeof parsed.score === "number" ? Math.max(0, Math.min(10, parsed.score)) : null };
+  } catch { return null; }
+}
+async function submitLobbyHomework(lobbyId, answer, feedback, score) {
+  const { data, error } = await supabase.rpc("submit_lobby_homework", {
+    p_lobby_id: lobbyId, p_answer: answer, p_feedback: feedback, p_score: score,
+  });
+  if (error) return { error };
+  const row = Array.isArray(data) ? data[0] : data;
+  return { row, error: null };
 }
 
 function roadmapSlug(roadmap) {
@@ -1634,7 +1679,13 @@ function LobbyRoom({ user, lobby: initialLobby, roster, profileMap, onBack, onLe
   const [loading, setLoading] = useState(true);
   const [lectureLoading, setLectureLoading] = useState(false);
   const [lectureErr, setLectureErr] = useState(false);
+  const [viewIdx, setViewIdx] = useState(0);
+  const [showHomework, setShowHomework] = useState(false);
+  const [hwAnswer, setHwAnswer] = useState("");
+  const [hwSubmitting, setHwSubmitting] = useState(false);
+  const [hwErr, setHwErr] = useState("");
   const scrollRef = useRef(null);
+  const genLockRef = useRef(false);
 
   useEffect(() => {
     let unsub = () => {};
@@ -1647,7 +1698,7 @@ function LobbyRoom({ user, lobby: initialLobby, roster, profileMap, onBack, onLe
     return () => unsub();
   }, [lobby.id]);
 
-  // watch the lobby row itself so if a groupmate generates the lecture first, everyone sees it live
+  // watch the lobby row itself so if a groupmate generates the next lecture or submits homework, everyone sees it live
   useEffect(() => {
     const channel = supabase.channel(`lobby-row:${lobby.id}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "lobbies", filter: `id=eq.${lobby.id}` }, (payload) => setLobby(l => ({ ...l, ...payload.new })))
@@ -1655,22 +1706,15 @@ function LobbyRoom({ user, lobby: initialLobby, roster, profileMap, onBack, onLe
     return () => supabase.removeChannel(channel);
   }, [lobby.id]);
 
+  const lectures = Array.isArray(lobby.lectures) ? lobby.lectures : [];
+
+  // generate lecture 1 the moment the room opens if nobody has yet
   useEffect(() => {
-    if (lobby.lecture_content || lectureLoading) return;
-    (async () => {
-      setLectureLoading(true);
-      setLectureErr(false);
-      const lecture = await generateLobbyLecture(lobby.topic);
-      if (lecture) {
-        await saveLobbyLecture(lobby.id, lecture);
-        setLobby(l => l.lecture_content ? l : { ...l, lecture_content: JSON.stringify(lecture) });
-      } else {
-        setLectureErr(true);
-      }
-      setLectureLoading(false);
-    })();
+    if (lectures.length === 0 && !lectureLoading && !genLockRef.current) {
+      generateNext();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lobby.id, lobby.lecture_content]);
+  }, [lobby.id, lectures.length]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -1687,22 +1731,55 @@ function LobbyRoom({ user, lobby: initialLobby, roster, profileMap, onBack, onLe
     if (error) setMessages(prev => [...prev, { id: `local-${Date.now()}`, lobby_id: lobby.id, user_id: user.id, message: trimmed, created_at: new Date().toISOString() }]);
   };
 
-  const retryLecture = async () => {
+  const generateNext = async () => {
+    if (genLockRef.current) return;
+    const currentLectures = Array.isArray(lobby.lectures) ? lobby.lectures : [];
+    if (currentLectures.length >= LOBBY_LECTURE_COUNT) return;
+    genLockRef.current = true;
     setLectureLoading(true);
     setLectureErr(false);
-    const lecture = await generateLobbyLecture(lobby.topic);
+    const nextNum = currentLectures.length + 1;
+    const priorTitles = currentLectures.map(l => l.title).filter(Boolean);
+    const lecture = await generateLobbyLectureStep(lobby.topic, nextNum, priorTitles);
     if (lecture) {
-      await saveLobbyLecture(lobby.id, lecture);
-      setLobby(l => l.lecture_content ? l : { ...l, lecture_content: JSON.stringify(lecture) });
+      const { lectures: updated, success, error } = await appendLobbyLecture(lobby.id, lecture, currentLectures.length, lecture.homework);
+      if (!error) {
+        setLobby(l => ({ ...l, lectures: updated }));
+        setViewIdx(updated.length - 1);
+      } else {
+        setLectureErr(true);
+      }
     } else {
       setLectureErr(true);
     }
     setLectureLoading(false);
+    genLockRef.current = false;
+  };
+
+  const submitHomework = async () => {
+    const answer = hwAnswer.trim();
+    if (!answer) return;
+    setHwSubmitting(true);
+    setHwErr("");
+    const review = await reviewLobbyHomework(lobby.topic, lobby.homework_question, answer);
+    if (!review) {
+      setHwErr("Couldn't get a review right now. Try again.");
+      setHwSubmitting(false);
+      return;
+    }
+    const { row, error } = await submitLobbyHomework(lobby.id, answer, review.feedback, review.score);
+    if (error) {
+      setHwErr("Couldn't save the submission. Try again.");
+    } else if (row) {
+      setLobby(l => ({ ...l, homework_answer: row.homework_answer, homework_feedback: row.homework_feedback, homework_score: row.homework_score, homework_submitted_by: row.homework_submitted_by }));
+    }
+    setHwSubmitting(false);
   };
 
   const joinedRoster = roster.filter(r => r.status === "joined");
-  let lecture = null;
-  try { lecture = lobby.lecture_content ? JSON.parse(lobby.lecture_content) : null; } catch { lecture = null; }
+  const lecture = lectures[viewIdx] || null;
+  const allDone = lectures.length >= LOBBY_LECTURE_COUNT;
+  const homeworkSubmitted = !!lobby.homework_submitted_by;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 90px)" }}>
@@ -1725,21 +1802,50 @@ function LobbyRoom({ user, lobby: initialLobby, roster, profileMap, onBack, onLe
       </div>
 
       <div style={{ display: "flex", gap: 16, flex: 1, minHeight: 0 }} className="lobby-room-panes">
-        {/* Lecture pane */}
-        <div className="card" style={{ flex: "1.6 1 0%", overflowY: "auto", padding: "28px 32px" }}>
-          {lectureLoading && !lecture ? (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 10 }}>
+        {/* Lecture / Homework pane */}
+        <div className="card" style={{ flex: "1.6 1 0%", overflowY: "auto", padding: "28px 32px", display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, gap: 12, flexWrap: "wrap" }}>
+            <span className="badge badge-gold">Professor Max</span>
+            {allDone && lobby.homework_question && (
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowHomework(s => !s)}>
+                {showHomework ? "← Back to lectures" : "📝 Homework"}
+              </button>
+            )}
+          </div>
+
+          {showHomework && allDone && lobby.homework_question ? (
+            <div style={{ flex: 1 }}>
+              <p className="label" style={{ marginBottom: 8 }}>Group Homework</p>
+              <p style={{ fontSize: 16, lineHeight: 1.7, marginBottom: 22 }}>{lobby.homework_question}</p>
+              {homeworkSubmitted ? (
+                <div className="card" style={{ padding: 18, background: "var(--surface2)" }}>
+                  <p className="label" style={{ marginBottom: 8 }}>Submitted answer</p>
+                  <p style={{ fontSize: 14, lineHeight: 1.7, marginBottom: 16 }}>{lobby.homework_answer}</p>
+                  <p className="label" style={{ marginBottom: 8 }}>Professor Max's feedback{typeof lobby.homework_score === "number" ? ` — ${lobby.homework_score}/10` : ""}</p>
+                  <p style={{ fontSize: 14, lineHeight: 1.7 }}>{lobby.homework_feedback}</p>
+                </div>
+              ) : (
+                <>
+                  <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>Work it out together in chat, then have one person submit the group's answer. It can only be submitted once, so agree before sending.</p>
+                  <textarea className="input" style={{ width: "100%", minHeight: 100, marginBottom: 10, fontFamily: "var(--font)" }} placeholder="Write the group's answer…" value={hwAnswer} onChange={e => setHwAnswer(e.target.value)} disabled={hwSubmitting} />
+                  <button className="btn btn-primary btn-sm" onClick={submitHomework} disabled={!hwAnswer.trim() || hwSubmitting}>{hwSubmitting ? "Reviewing…" : "Submit for Review"}</button>
+                  {hwErr && <p style={{ fontSize: 12, color: "var(--ember)", marginTop: 8 }}>{hwErr}</p>}
+                </>
+              )}
+            </div>
+          ) : lectureLoading && !lecture ? (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 10 }}>
               <Icon.Loader />
-              <p style={{ fontSize: 13, color: "var(--muted)" }}>Professor Max is putting together a lecture on "{lobby.topic}"…</p>
+              <p style={{ fontSize: 13, color: "var(--muted)" }}>Professor Max is putting together lecture {lectures.length + 1} on "{lobby.topic}"…</p>
             </div>
           ) : lectureErr && !lecture ? (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 10, textAlign: "center" }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 10, textAlign: "center" }}>
               <p style={{ fontSize: 13, color: "var(--muted)" }}>Couldn't generate the lecture right now.</p>
-              <button className="btn btn-secondary btn-sm" onClick={retryLecture}>Try again</button>
+              <button className="btn btn-secondary btn-sm" onClick={generateNext}>Try again</button>
             </div>
           ) : lecture ? (
             <>
-              <span className="badge badge-gold" style={{ marginBottom: 12 }}>Professor Max</span>
+              <p style={{ fontSize: 11, color: "var(--muted)", fontFamily: "var(--font-mono)", marginBottom: 6 }}>Lecture {viewIdx + 1} of {LOBBY_LECTURE_COUNT}</p>
               <h2 style={{ fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 400, marginBottom: 18, lineHeight: 1.25 }}>{lecture.title}</h2>
               <p style={{ fontSize: 15, lineHeight: 1.85, color: "var(--ink2)", marginBottom: 22 }}>{lecture.coreIdea}</p>
               {lecture.example && (<>
@@ -1753,8 +1859,18 @@ function LobbyRoom({ user, lobby: initialLobby, roster, profileMap, onBack, onLe
                 </div>
               )}
               {lecture.takeaway && (
-                <p style={{ fontSize: 13, color: "var(--muted)", fontStyle: "italic" }}>{lecture.takeaway}</p>
+                <p style={{ fontSize: 13, color: "var(--muted)", fontStyle: "italic", marginBottom: 22 }}>{lecture.takeaway}</p>
               )}
+              <div style={{ marginTop: "auto", display: "flex", gap: 8, paddingTop: 12 }}>
+                <button className="btn btn-ghost btn-sm" onClick={() => setViewIdx(i => Math.max(0, i - 1))} disabled={viewIdx === 0}>← Prev</button>
+                {viewIdx < lectures.length - 1 ? (
+                  <button className="btn btn-secondary btn-sm" onClick={() => setViewIdx(i => i + 1)}>Next Lecture →</button>
+                ) : lectures.length < LOBBY_LECTURE_COUNT ? (
+                  <button className="btn btn-secondary btn-sm" onClick={generateNext} disabled={lectureLoading}>{lectureLoading ? "Generating…" : `Next Lecture (${lectures.length + 1}/${LOBBY_LECTURE_COUNT}) →`}</button>
+                ) : (
+                  <button className="btn btn-primary btn-sm" onClick={() => setShowHomework(true)}>📝 View Homework →</button>
+                )}
+              </div>
             </>
           ) : (
             <p style={{ fontSize: 13, color: "var(--muted)" }}>No lecture yet.</p>
@@ -1951,14 +2067,14 @@ function Friends({ user, isDemo }) {
   useEffect(() => { refresh(); }, [refresh]);
 
   useEffect(() => {
-    if (!query.trim()) { setResults([]); return; }
+    let cancelled = false;
     const t = setTimeout(async () => {
       setSearching(true);
-      const r = await searchProfiles(query, user.id);
-      setResults(r);
+      const r = query.trim() ? await searchProfiles(query, user.id) : await browseProfiles(user.id, 30);
+      if (!cancelled) setResults(r);
       setSearching(false);
-    }, 350);
-    return () => clearTimeout(t);
+    }, query.trim() ? 350 : 0);
+    return () => { cancelled = true; clearTimeout(t); };
   }, [query, user?.id]);
 
   const friendshipWith = (id) => friendships.find(f => f.requester_id === id || f.addressee_id === id);
@@ -2030,9 +2146,13 @@ function Friends({ user, isDemo }) {
             <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }}><Icon.Search /></span>
             <input className="input" style={{ width: "100%", paddingLeft: 36 }} placeholder="Type a student's name…" value={query} onChange={e => setQuery(e.target.value)} />
           </div>
-          {searching && <p style={{ fontSize: 13, color: "var(--muted)" }}>Searching…</p>}
+          {!query.trim() && <p className="label" style={{ marginBottom: 10 }}>Students on Velorn</p>}
+          {searching && <p style={{ fontSize: 13, color: "var(--muted)" }}>{query.trim() ? "Searching…" : "Loading…"}</p>}
           {!searching && query.trim() && results.length === 0 && (
             <p style={{ fontSize: 13, color: "var(--muted)" }}>No students found matching "{query.trim()}".</p>
+          )}
+          {!searching && !query.trim() && results.length === 0 && (
+            <p style={{ fontSize: 13, color: "var(--muted)" }}>No other students yet.</p>
           )}
           <div className="stack gap-8">
             {results.map(r => {
@@ -2040,18 +2160,21 @@ function Friends({ user, isDemo }) {
               const alreadySent = sentIds.has(r.id);
               return (
                 <div key={r.id} className="card" style={{ padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--surface2)", border: "1px solid var(--border2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600, color: "var(--ink2)", fontFamily: "var(--font-mono)" }}>{initials(r.full_name)}</div>
-                    <span style={{ fontSize: 14, fontWeight: 500 }}>{r.full_name}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--surface2)", border: "1px solid var(--border2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600, color: "var(--ink2)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>{initials(r.full_name)}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 500 }}>{r.full_name}</div>
+                      <div style={{ fontSize: 12, color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.course_title ? `Learning ${r.course_title}` : "No course started yet"}</div>
+                    </div>
                   </div>
                   {existing?.status === "accepted" ? (
-                    <span className="badge badge-neutral">Friends</span>
+                    <span className="badge badge-neutral" style={{ flexShrink: 0 }}>Friends</span>
                   ) : existing?.status === "pending" ? (
-                    <span className="badge badge-neutral">Pending</span>
+                    <span className="badge badge-neutral" style={{ flexShrink: 0 }}>Pending</span>
                   ) : alreadySent ? (
-                    <span className="badge badge-neutral">Sent</span>
+                    <span className="badge badge-neutral" style={{ flexShrink: 0 }}>Sent</span>
                   ) : (
-                    <button className="btn btn-secondary btn-sm row gap-6" onClick={() => handleAdd(r.id)}><Icon.UserPlus />Add</button>
+                    <button className="btn btn-secondary btn-sm row gap-6" style={{ flexShrink: 0 }} onClick={() => handleAdd(r.id)}><Icon.UserPlus />Add</button>
                   )}
                 </div>
               );
