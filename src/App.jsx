@@ -208,7 +208,7 @@ async function getLobbyMessages(lobbyId) {
   return data || [];
 }
 async function sendLobbyMessage(lobbyId, userId, message) {
-  return await supabase.from("lobby_messages").insert({ lobby_id: lobbyId, user_id: userId, message });
+  return await supabase.from("lobby_messages").insert({ lobby_id: lobbyId, user_id: userId, message }).select().single();
 }
 function subscribeLobbyMessages(lobbyId, onInsert) {
   const channel = supabase.channel(`lobby:${lobbyId}`)
@@ -1695,8 +1695,13 @@ function LobbyRoom({ user, lobby: initialLobby, roster: initialRoster, profileMa
   const [showInvite, setShowInvite] = useState(false);
   const [inviteSelected, setInviteSelected] = useState(new Set());
   const [inviteBusy, setInviteBusy] = useState(false);
+  const [typingUsers, setTypingUsers] = useState({}); // user_id -> name
   const scrollRef = useRef(null);
   const genLockRef = useRef(false);
+  const typingChannelRef = useRef(null);
+  const typingTimeoutsRef = useRef({});
+  const lastTypingSentRef = useRef(0);
+  const myNameRef = useRef("Someone");
 
   useEffect(() => {
     let unsub = () => {};
@@ -1704,10 +1709,13 @@ function LobbyRoom({ user, lobby: initialLobby, roster: initialRoster, profileMa
       const msgs = await getLobbyMessages(lobby.id);
       setMessages(msgs);
       setLoading(false);
-      unsub = subscribeLobbyMessages(lobby.id, (m) => setMessages(prev => prev.some(p => p.id === m.id) ? prev : [...prev, m]));
+      unsub = subscribeLobbyMessages(lobby.id, (m) => {
+        if (m.user_id === user.id) return; // already shown optimistically when we sent it
+        setMessages(prev => prev.some(p => p.id === m.id) ? prev : [...prev, m]);
+      });
     })();
     return () => unsub();
-  }, [lobby.id]);
+  }, [lobby.id, user.id]);
 
   // watch the lobby row itself so if a groupmate generates the next lecture or submits homework, everyone sees it live
   useEffect(() => {
@@ -1733,6 +1741,31 @@ function LobbyRoom({ user, lobby: initialLobby, roster: initialRoster, profileMa
     (async () => { const map = await getProfilesByIds(missing); if (Object.keys(map).length) setNames(n => ({ ...n, ...map })); })();
   }, [roster, user.id, names]);
 
+  // our own display name, for the typing broadcast payload (not needed for "You" labels, so fetched separately)
+  useEffect(() => {
+    (async () => { const map = await getProfilesByIds([user.id]); if (map[user.id]) myNameRef.current = map[user.id]; })();
+  }, [user.id]);
+
+  // lightweight, ephemeral typing indicator — broadcast-only, never written to the database
+  useEffect(() => {
+    const channel = supabase.channel(`lobby-typing:${lobby.id}`)
+      .on("broadcast", { event: "typing" }, ({ payload }) => {
+        if (!payload || payload.user_id === user.id) return;
+        setTypingUsers(t => ({ ...t, [payload.user_id]: payload.name }));
+        clearTimeout(typingTimeoutsRef.current[payload.user_id]);
+        typingTimeoutsRef.current[payload.user_id] = setTimeout(() => {
+          setTypingUsers(t => { const n = { ...t }; delete n[payload.user_id]; return n; });
+        }, 2200);
+      })
+      .subscribe();
+    typingChannelRef.current = channel;
+    return () => {
+      supabase.removeChannel(channel);
+      Object.values(typingTimeoutsRef.current).forEach(clearTimeout);
+      typingTimeoutsRef.current = {};
+    };
+  }, [lobby.id, user.id]);
+
   const lectures = Array.isArray(lobby.lectures) ? lobby.lectures : [];
 
   // generate lecture 1 the moment the room opens if nobody has yet
@@ -1745,17 +1778,32 @@ function LobbyRoom({ user, lobby: initialLobby, roster: initialRoster, profileMa
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages]);
+  }, [messages, typingUsers]);
 
   const nameFor = (uid) => uid === user.id ? "You" : (names[uid] || "Student");
   const initials = (name) => (name || "?").trim().split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
+
+  const handleTextChange = (e) => {
+    setText(e.target.value);
+    const now = Date.now();
+    if (now - lastTypingSentRef.current > 1000) {
+      lastTypingSentRef.current = now;
+      typingChannelRef.current?.send({ type: "broadcast", event: "typing", payload: { user_id: user.id, name: myNameRef.current } });
+    }
+  };
 
   const handleSend = async () => {
     const trimmed = text.trim();
     if (!trimmed) return;
     setText("");
-    const { error } = await sendLobbyMessage(lobby.id, user.id, trimmed);
-    if (error) setMessages(prev => [...prev, { id: `local-${Date.now()}`, lobby_id: lobby.id, user_id: user.id, message: trimmed, created_at: new Date().toISOString() }]);
+    clearTimeout(typingTimeoutsRef.current._self);
+    const tempId = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setMessages(prev => [...prev, { id: tempId, lobby_id: lobby.id, user_id: user.id, message: trimmed, created_at: new Date().toISOString() }]);
+    const { data, error } = await sendLobbyMessage(lobby.id, user.id, trimmed);
+    if (!error && data) {
+      setMessages(prev => prev.map(m => m.id === tempId ? data : m));
+    }
+    // on error, the optimistic bubble just stays as-is — the person already sees their message
   };
 
   const toggleInviteFriend = (id) => setInviteSelected(s => {
@@ -1965,10 +2013,20 @@ function LobbyRoom({ user, lobby: initialLobby, roster: initialRoster, profileMa
                 );
               })
             }
+            {Object.keys(typingUsers).length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+                <span style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2 }}>
+                  {Object.values(typingUsers).slice(0, 2).join(", ")}{Object.keys(typingUsers).length > 2 ? " and others" : ""} {Object.keys(typingUsers).length > 1 ? "are" : "is"} typing
+                </span>
+                <span style={{ background: "var(--surface2)", padding: "8px 12px", borderRadius: 12, display: "inline-block" }}>
+                  <span className="typing-dots"><span className="typing-dot" style={{ background: "var(--ink2)" }}></span><span className="typing-dot" style={{ background: "var(--ink2)" }}></span><span className="typing-dot" style={{ background: "var(--ink2)" }}></span></span>
+                </span>
+              </div>
+            )}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <input className="input" style={{ flex: 1 }} placeholder="Type a message…" value={text}
-              onChange={e => setText(e.target.value)}
+              onChange={handleTextChange}
               onKeyDown={e => { if (e.key === "Enter") handleSend(); }} />
             <button className="btn btn-primary btn-sm" onClick={handleSend}>Send</button>
           </div>
