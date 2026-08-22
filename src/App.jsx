@@ -196,6 +196,12 @@ async function respondLobbyInvite(lobbyId, userId, status) {
 async function leaveLobby(lobbyId, userId) {
   return await supabase.from("lobby_members").delete().eq("lobby_id", lobbyId).eq("user_id", userId);
 }
+async function inviteToLobby(lobbyId, inviteeIds) {
+  if (!inviteeIds.length) return { error: null };
+  const rows = inviteeIds.map(id => ({ lobby_id: lobbyId, user_id: id, status: "invited" }));
+  const { error } = await supabase.from("lobby_members").insert(rows);
+  return { error };
+}
 async function getLobbyMessages(lobbyId) {
   const { data, error } = await supabase.from("lobby_messages").select("*").eq("lobby_id", lobbyId).order("created_at", { ascending: true }).limit(200);
   if (error) return [];
@@ -1672,8 +1678,10 @@ function WeekJourneyMap({ week, currentMonth, currentWeek, currentDay, completed
   );
 }
 
-function LobbyRoom({ user, lobby: initialLobby, roster, profileMap, onBack, onLeave }) {
+function LobbyRoom({ user, lobby: initialLobby, roster: initialRoster, profileMap, accepted, onBack, onLeave }) {
   const [lobby, setLobby] = useState(initialLobby);
+  const [roster, setRoster] = useState(initialRoster);
+  const [names, setNames] = useState(profileMap || {});
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
@@ -1684,6 +1692,9 @@ function LobbyRoom({ user, lobby: initialLobby, roster, profileMap, onBack, onLe
   const [hwAnswer, setHwAnswer] = useState("");
   const [hwSubmitting, setHwSubmitting] = useState(false);
   const [hwErr, setHwErr] = useState("");
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteSelected, setInviteSelected] = useState(new Set());
+  const [inviteBusy, setInviteBusy] = useState(false);
   const scrollRef = useRef(null);
   const genLockRef = useRef(false);
 
@@ -1706,6 +1717,22 @@ function LobbyRoom({ user, lobby: initialLobby, roster, profileMap, onBack, onLe
     return () => supabase.removeChannel(channel);
   }, [lobby.id]);
 
+  // watch the roster so invites/joins/leaves show up live for everyone in the room
+  useEffect(() => {
+    const refreshRoster = async () => setRoster(await getLobbyRoster(lobby.id));
+    const channel = supabase.channel(`lobby-roster:${lobby.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "lobby_members", filter: `lobby_id=eq.${lobby.id}` }, refreshRoster)
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [lobby.id]);
+
+  // resolve names for anyone in the roster we don't already have (e.g. a member invited by someone else, not necessarily your own friend)
+  useEffect(() => {
+    const missing = roster.map(r => r.user_id).filter(id => id !== user.id && !names[id]);
+    if (!missing.length) return;
+    (async () => { const map = await getProfilesByIds(missing); if (Object.keys(map).length) setNames(n => ({ ...n, ...map })); })();
+  }, [roster, user.id, names]);
+
   const lectures = Array.isArray(lobby.lectures) ? lobby.lectures : [];
 
   // generate lecture 1 the moment the room opens if nobody has yet
@@ -1720,7 +1747,7 @@ function LobbyRoom({ user, lobby: initialLobby, roster, profileMap, onBack, onLe
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
-  const nameFor = (uid) => uid === user.id ? "You" : (profileMap[uid] || "Student");
+  const nameFor = (uid) => uid === user.id ? "You" : (names[uid] || "Student");
   const initials = (name) => (name || "?").trim().split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
 
   const handleSend = async () => {
@@ -1730,6 +1757,25 @@ function LobbyRoom({ user, lobby: initialLobby, roster, profileMap, onBack, onLe
     const { error } = await sendLobbyMessage(lobby.id, user.id, trimmed);
     if (error) setMessages(prev => [...prev, { id: `local-${Date.now()}`, lobby_id: lobby.id, user_id: user.id, message: trimmed, created_at: new Date().toISOString() }]);
   };
+
+  const toggleInviteFriend = (id) => setInviteSelected(s => {
+    const next = new Set(s);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  const handleInvite = async () => {
+    if (!inviteSelected.size) return;
+    setInviteBusy(true);
+    const { error } = await inviteToLobby(lobby.id, [...inviteSelected]);
+    setInviteBusy(false);
+    if (!error) {
+      setInviteSelected(new Set());
+      setShowInvite(false);
+      setRoster(await getLobbyRoster(lobby.id));
+    }
+  };
+  const rosterIds = new Set(roster.map(r => r.user_id));
+  const inviteCandidates = (accepted || []).map(f => f.requester_id === user.id ? f.addressee_id : f.requester_id).filter(id => !rosterIds.has(id));
 
   const generateNext = async () => {
     if (genLockRef.current) return;
@@ -1797,10 +1843,37 @@ function LobbyRoom({ user, lobby: initialLobby, roster, profileMap, onBack, onLe
               <div key={r.user_id} title={nameFor(r.user_id)} style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--surface2)", border: "2px solid var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 600, color: "var(--ink2)", fontFamily: "var(--font-mono)", marginRight: -8 }}>{initials(nameFor(r.user_id))}</div>
             ))}
           </div>
+          <button className="btn btn-secondary btn-sm row gap-6" onClick={() => setShowInvite(s => !s)}><Icon.UserPlus />Invite</button>
           <button className="btn btn-ghost btn-sm" onClick={onLeave}>Leave</button>
         </div>
       </div>
 
+      {showInvite && (
+        <div className="card" style={{ padding: 16, marginBottom: 14 }}>
+          <p className="label" style={{ marginBottom: 10 }}>Invite friends to this lobby</p>
+          {inviteCandidates.length === 0 ? (
+            <p style={{ fontSize: 13, color: "var(--muted)" }}>Everyone you can invite is already in this lobby.</p>
+          ) : (
+            <>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+                {inviteCandidates.map(id => {
+                  const selected = inviteSelected.has(id);
+                  return (
+                    <button key={id} onClick={() => toggleInviteFriend(id)}
+                      style={{ padding: "7px 14px", borderRadius: 20, border: selected ? "1px solid var(--accent2)" : "1px solid var(--border2)", background: selected ? "var(--accent2)" : "var(--surface2)", color: selected ? "#fff" : "var(--ink)", fontSize: 12, cursor: "pointer" }}>
+                      {nameFor(id)}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="row gap-8">
+                <button className="btn btn-primary btn-sm" onClick={handleInvite} disabled={!inviteSelected.size || inviteBusy}>{inviteBusy ? "Inviting…" : "Send Invite"}</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setShowInvite(false); setInviteSelected(new Set()); }}>Cancel</button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
       <div style={{ display: "flex", gap: 16, flex: 1, minHeight: 0 }} className="lobby-room-panes">
         {/* Lecture / Homework pane */}
         <div className="card" style={{ flex: "1.6 1 0%", overflowY: "auto", padding: "28px 32px", display: "flex", flexDirection: "column" }}>
@@ -1959,7 +2032,7 @@ function LobbiesTab({ user, accepted, profileMap, isDemo, onRoomOpenChange }) {
   const handleLeave = async () => { if (activeLobby) { await leaveLobby(activeLobby.id, user.id); } setActiveLobby(null); await refresh(); };
 
   if (activeLobby) {
-    return <LobbyRoom user={user} lobby={activeLobby} roster={activeRoster} profileMap={profileMap} onBack={() => setActiveLobby(null)} onLeave={handleLeave} />;
+    return <LobbyRoom user={user} lobby={activeLobby} roster={activeRoster} profileMap={profileMap} accepted={accepted} onBack={() => setActiveLobby(null)} onLeave={handleLeave} />;
   }
 
   const invited = lobbies.filter(l => l.myStatus === "invited");
