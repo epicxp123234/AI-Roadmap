@@ -205,6 +205,21 @@ function subscribeLobbyMessages(lobbyId, onInsert) {
     .subscribe();
   return () => supabase.removeChannel(channel);
 }
+async function generateLobbyLecture(topic) {
+  const prompt = `You are Professor Max teaching a small group of teenagers who are studying together in a live study room. Topic: "${topic}".\nWrite ONE focused lecture on this topic, written to be read together as a group before they discuss it. Return ONLY valid JSON, no markdown, no backticks:\n{"title":"Clear concise title","coreIdea":"3-4 sentences explaining the core concept plainly","example":"A concrete real-world example","discuss":"One open question for the group to talk through together","takeaway":"One sentence summary"}`;
+  let raw = "";
+  try { raw = await withTimeout(askClaude([{ role: "user", content: prompt }]), 12000, ""); } catch { raw = ""; }
+  if (!raw?.trim()) return null;
+  try {
+    const cleaned = raw.trim().replace(/```json|```/gi, "").replace(/,(\s*[}\]])/g, "$1");
+    const m = cleaned.match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    return JSON.parse(m[0]);
+  } catch { return null; }
+}
+async function saveLobbyLecture(lobbyId, lectureObj) {
+  return await supabase.from("lobbies").update({ lecture_content: JSON.stringify(lectureObj), lecture_generated_at: new Date().toISOString() }).eq("id", lobbyId).is("lecture_content", null);
+}
 
 function roadmapSlug(roadmap) {
   const base = roadmap?.trackId || roadmap?.title || "roadmap";
@@ -761,6 +776,8 @@ const css = `
     .container{padding:0 20px;}
     .container-wide{padding:0 20px;}
     .card-p-lg{padding:20px;}
+    .lobby-room-panes{flex-direction:column !important;}
+    .lobby-chat-pane{max-width:none !important;max-height:280px;}
     .hero-layout{flex-direction:column!important;text-align:center;}
     .hero-text{max-width:100%!important;}
     .hero-brain{width:260px!important;height:260px!important;margin:0 auto;}
@@ -1610,10 +1627,13 @@ function WeekJourneyMap({ week, currentMonth, currentWeek, currentDay, completed
   );
 }
 
-function LobbyRoom({ user, lobby, roster, profileMap, onBack, onLeave }) {
+function LobbyRoom({ user, lobby: initialLobby, roster, profileMap, onBack, onLeave }) {
+  const [lobby, setLobby] = useState(initialLobby);
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
+  const [lectureLoading, setLectureLoading] = useState(false);
+  const [lectureErr, setLectureErr] = useState(false);
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -1626,6 +1646,31 @@ function LobbyRoom({ user, lobby, roster, profileMap, onBack, onLeave }) {
     })();
     return () => unsub();
   }, [lobby.id]);
+
+  // watch the lobby row itself so if a groupmate generates the lecture first, everyone sees it live
+  useEffect(() => {
+    const channel = supabase.channel(`lobby-row:${lobby.id}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "lobbies", filter: `id=eq.${lobby.id}` }, (payload) => setLobby(l => ({ ...l, ...payload.new })))
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [lobby.id]);
+
+  useEffect(() => {
+    if (lobby.lecture_content || lectureLoading) return;
+    (async () => {
+      setLectureLoading(true);
+      setLectureErr(false);
+      const lecture = await generateLobbyLecture(lobby.topic);
+      if (lecture) {
+        await saveLobbyLecture(lobby.id, lecture);
+        setLobby(l => l.lecture_content ? l : { ...l, lecture_content: JSON.stringify(lecture) });
+      } else {
+        setLectureErr(true);
+      }
+      setLectureLoading(false);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lobby.id, lobby.lecture_content]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -1642,11 +1687,26 @@ function LobbyRoom({ user, lobby, roster, profileMap, onBack, onLeave }) {
     if (error) setMessages(prev => [...prev, { id: `local-${Date.now()}`, lobby_id: lobby.id, user_id: user.id, message: trimmed, created_at: new Date().toISOString() }]);
   };
 
+  const retryLecture = async () => {
+    setLectureLoading(true);
+    setLectureErr(false);
+    const lecture = await generateLobbyLecture(lobby.topic);
+    if (lecture) {
+      await saveLobbyLecture(lobby.id, lecture);
+      setLobby(l => l.lecture_content ? l : { ...l, lecture_content: JSON.stringify(lecture) });
+    } else {
+      setLectureErr(true);
+    }
+    setLectureLoading(false);
+  };
+
   const joinedRoster = roster.filter(r => r.status === "joined");
+  let lecture = null;
+  try { lecture = lobby.lecture_content ? JSON.parse(lobby.lecture_content) : null; } catch { lecture = null; }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 90px)", maxHeight: 640 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, gap: 12 }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 90px)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <button className="btn btn-ghost btn-sm" onClick={onBack}>← Back</button>
           <div>
@@ -1654,41 +1714,82 @@ function LobbyRoom({ user, lobby, roster, profileMap, onBack, onLeave }) {
             <div style={{ fontSize: 12, color: "var(--muted)" }}>{joinedRoster.length} in the lobby</div>
           </div>
         </div>
-        <button className="btn btn-ghost btn-sm" onClick={onLeave}>Leave</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ display: "flex" }}>
+            {joinedRoster.map(r => (
+              <div key={r.user_id} title={nameFor(r.user_id)} style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--surface2)", border: "2px solid var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 600, color: "var(--ink2)", fontFamily: "var(--font-mono)", marginRight: -8 }}>{initials(nameFor(r.user_id))}</div>
+            ))}
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={onLeave}>Leave</button>
+        </div>
       </div>
 
-      <div style={{ display: "flex", gap: -6, marginBottom: 12 }}>
-        {joinedRoster.map(r => (
-          <div key={r.user_id} title={nameFor(r.user_id)} style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--surface2)", border: "2px solid var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 600, color: "var(--ink2)", fontFamily: "var(--font-mono)", marginRight: -8 }}>{initials(nameFor(r.user_id))}</div>
-        ))}
-      </div>
+      <div style={{ display: "flex", gap: 16, flex: 1, minHeight: 0 }} className="lobby-room-panes">
+        {/* Lecture pane */}
+        <div className="card" style={{ flex: "1.6 1 0%", overflowY: "auto", padding: "28px 32px" }}>
+          {lectureLoading && !lecture ? (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 10 }}>
+              <Icon.Loader />
+              <p style={{ fontSize: 13, color: "var(--muted)" }}>Professor Max is putting together a lecture on "{lobby.topic}"…</p>
+            </div>
+          ) : lectureErr && !lecture ? (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 10, textAlign: "center" }}>
+              <p style={{ fontSize: 13, color: "var(--muted)" }}>Couldn't generate the lecture right now.</p>
+              <button className="btn btn-secondary btn-sm" onClick={retryLecture}>Try again</button>
+            </div>
+          ) : lecture ? (
+            <>
+              <span className="badge badge-gold" style={{ marginBottom: 12 }}>Professor Max</span>
+              <h2 style={{ fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 400, marginBottom: 18, lineHeight: 1.25 }}>{lecture.title}</h2>
+              <p style={{ fontSize: 15, lineHeight: 1.85, color: "var(--ink2)", marginBottom: 22 }}>{lecture.coreIdea}</p>
+              {lecture.example && (<>
+                <p className="label" style={{ marginBottom: 6 }}>Example</p>
+                <p style={{ fontSize: 14, lineHeight: 1.8, color: "var(--ink2)", marginBottom: 22 }}>{lecture.example}</p>
+              </>)}
+              {lecture.discuss && (
+                <div className="card" style={{ padding: 16, background: "var(--surface2)", marginBottom: 22 }}>
+                  <p className="label" style={{ marginBottom: 6 }}>Talk it through together</p>
+                  <p style={{ fontSize: 14, lineHeight: 1.7 }}>{lecture.discuss}</p>
+                </div>
+              )}
+              {lecture.takeaway && (
+                <p style={{ fontSize: 13, color: "var(--muted)", fontStyle: "italic" }}>{lecture.takeaway}</p>
+              )}
+            </>
+          ) : (
+            <p style={{ fontSize: 13, color: "var(--muted)" }}>No lecture yet.</p>
+          )}
+        </div>
 
-      <div ref={scrollRef} className="card" style={{ flex: 1, overflowY: "auto", padding: 16, marginBottom: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-        {loading ? <p style={{ fontSize: 13, color: "var(--muted)" }}>Loading messages…</p> :
-          messages.length === 0 ? <p style={{ fontSize: 13, color: "var(--muted)" }}>No messages yet. Say hi.</p> :
-          messages.map(m => {
-            const mine = m.user_id === user.id;
-            return (
-              <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start" }}>
-                <span style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2 }}>{nameFor(m.user_id)}</span>
-                <span style={{ fontSize: 13, background: mine ? "var(--accent2)" : "var(--surface2)", color: mine ? "#fff" : "var(--ink)", padding: "8px 12px", borderRadius: 12, maxWidth: "75%", wordBreak: "break-word" }}>{m.message}</span>
-              </div>
-            );
-          })
-        }
-      </div>
-
-      <div style={{ display: "flex", gap: 8 }}>
-        <input className="input" style={{ flex: 1 }} placeholder="Type a message…" value={text}
-          onChange={e => setText(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") handleSend(); }} />
-        <button className="btn btn-primary btn-sm" onClick={handleSend}>Send</button>
+        {/* Chat pane */}
+        <div style={{ flex: "1 1 0%", maxWidth: 340, display: "flex", flexDirection: "column", minHeight: 0 }} className="lobby-chat-pane">
+          <div ref={scrollRef} className="card" style={{ flex: 1, overflowY: "auto", padding: 14, marginBottom: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+            {loading ? <p style={{ fontSize: 13, color: "var(--muted)" }}>Loading messages…</p> :
+              messages.length === 0 ? <p style={{ fontSize: 13, color: "var(--muted)" }}>No messages yet. Say hi.</p> :
+              messages.map(m => {
+                const mine = m.user_id === user.id;
+                return (
+                  <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start" }}>
+                    <span style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2 }}>{nameFor(m.user_id)}</span>
+                    <span style={{ fontSize: 13, background: mine ? "var(--accent2)" : "var(--surface2)", color: mine ? "#fff" : "var(--ink)", padding: "8px 12px", borderRadius: 12, maxWidth: "85%", wordBreak: "break-word" }}>{m.message}</span>
+                  </div>
+                );
+              })
+            }
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input className="input" style={{ flex: 1 }} placeholder="Type a message…" value={text}
+              onChange={e => setText(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") handleSend(); }} />
+            <button className="btn btn-primary btn-sm" onClick={handleSend}>Send</button>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-function LobbiesTab({ user, accepted, profileMap, isDemo }) {
+function LobbiesTab({ user, accepted, profileMap, isDemo, onRoomOpenChange }) {
   const [lobbies, setLobbies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -1737,6 +1838,8 @@ function LobbiesTab({ user, accepted, profileMap, isDemo }) {
 
   const handleAccept = async (lobby) => { await respondLobbyInvite(lobby.id, user.id, "joined"); await refresh(); };
   const handleDecline = async (lobby) => { await respondLobbyInvite(lobby.id, user.id, "declined"); await refresh(); };
+  useEffect(() => { onRoomOpenChange?.(!!activeLobby); }, [activeLobby, onRoomOpenChange]);
+
   const handleLeave = async () => { if (activeLobby) { await leaveLobby(activeLobby.id, user.id); } setActiveLobby(null); await refresh(); };
 
   if (activeLobby) {
@@ -1832,6 +1935,7 @@ function Friends({ user, isDemo }) {
   const [profileMap, setProfileMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [sentIds, setSentIds] = useState(new Set());
+  const [roomOpen, setRoomOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!user?.id) return;
@@ -1888,7 +1992,8 @@ function Friends({ user, isDemo }) {
   ];
 
   return (
-    <div className="page container" style={{ paddingTop: 90, paddingBottom: 64, maxWidth: 760 }}>
+    <div className="page container" style={{ paddingTop: 90, paddingBottom: 64, maxWidth: roomOpen ? 1100 : 760, transition: "max-width 0.2s" }}>
+      {!roomOpen && (<>
       <div style={{ marginBottom: 24 }}>
         <p className="label" style={{ marginBottom: 4 }}>Social</p>
         <h2 style={{ fontFamily: "var(--font-display)", fontSize: 32, fontWeight: 400 }}>Friends</h2>
@@ -1910,6 +2015,7 @@ function Friends({ user, isDemo }) {
           </button>
         ))}
       </div>
+      </>)}
 
       {isDemo && (
         <div className="card" style={{ padding: 16, marginBottom: 20, fontSize: 13, color: "var(--muted)" }}>
@@ -2021,7 +2127,7 @@ function Friends({ user, isDemo }) {
         </div>
       )}
       {tab === "lobbies" && (
-        <LobbiesTab user={user} accepted={accepted} profileMap={profileMap} isDemo={isDemo} />
+        <LobbiesTab user={user} accepted={accepted} profileMap={profileMap} isDemo={isDemo} onRoomOpenChange={setRoomOpen} />
       )}
     </div>
   );
