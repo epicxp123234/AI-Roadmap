@@ -186,7 +186,7 @@ async function getMyLobbies(userId) {
   return (memberships || []).filter(m => m.lobbies).map(m => ({ ...m.lobbies, myStatus: m.status }));
 }
 async function getLobbyRoster(lobbyId) {
-  const { data, error } = await supabase.from("lobby_members").select("user_id,status").eq("lobby_id", lobbyId);
+  const { data, error } = await supabase.from("lobby_members").select("user_id,status,last_seen_at").eq("lobby_id", lobbyId);
   if (error) return [];
   return data || [];
 }
@@ -202,6 +202,9 @@ async function inviteToLobby(lobbyId, inviteeIds) {
   const { error } = await supabase.from("lobby_members").insert(rows);
   return { error };
 }
+async function markLobbySeen(lobbyId, userId) {
+  return await supabase.from("lobby_members").update({ last_seen_at: new Date().toISOString() }).eq("lobby_id", lobbyId).eq("user_id", userId);
+}
 async function getLobbyMessages(lobbyId) {
   const { data, error } = await supabase.from("lobby_messages").select("*").eq("lobby_id", lobbyId).order("created_at", { ascending: true }).limit(200);
   if (error) return [];
@@ -210,9 +213,13 @@ async function getLobbyMessages(lobbyId) {
 async function sendLobbyMessage(lobbyId, userId, message) {
   return await supabase.from("lobby_messages").insert({ lobby_id: lobbyId, user_id: userId, message }).select().single();
 }
-function subscribeLobbyMessages(lobbyId, onInsert) {
+async function deleteLobbyMessage(messageId, userId) {
+  return await supabase.from("lobby_messages").delete().eq("id", messageId).eq("user_id", userId);
+}
+function subscribeLobbyMessages(lobbyId, onInsert, onDelete) {
   const channel = supabase.channel(`lobby:${lobbyId}`)
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "lobby_messages", filter: `lobby_id=eq.${lobbyId}` }, (payload) => onInsert(payload.new))
+    .on("postgres_changes", { event: "DELETE", schema: "public", table: "lobby_messages", filter: `lobby_id=eq.${lobbyId}` }, (payload) => onDelete && onDelete(payload.old))
     .subscribe();
   return () => supabase.removeChannel(channel);
 }
@@ -222,9 +229,15 @@ const LOBBY_LECTURE_COUNT = 5;
 // question into the SAME call so we never spend a 6th API call on homework.
 async function generateLobbyLectureStep(topic, lectureNumber, priorTitles) {
   const isLast = lectureNumber === LOBBY_LECTURE_COUNT;
-  const priorLine = priorTitles.length ? `Already covered: ${priorTitles.join("; ")}. Don't repeat these, build on them.` : "This is the first lecture in the series.";
-  const homeworkLine = isLast ? `\nAlso include a "homework" field: one problem the group must solve TOGETHER by discussing it in chat, that draws on all ${LOBBY_LECTURE_COUNT} lectures. Keep it to 1-2 sentences.` : "";
-  const prompt = `You are Professor Max teaching a small group of teenagers studying together live. Topic: "${topic}". This is lecture ${lectureNumber} of ${LOBBY_LECTURE_COUNT} in a short series. ${priorLine}\nWrite ONE focused, self-contained lecture, meant to be read together as a group before discussing.${homeworkLine}\nReturn ONLY valid JSON, no markdown, no backticks:\n{"title":"Clear concise title","coreIdea":"3-4 sentences explaining the core concept plainly","example":"A concrete real-world example","discuss":"One open question for the group to talk through together","takeaway":"One sentence summary"${isLast ? ',"homework":"The group homework problem"' : ""}}`;
+  const priorLine = priorTitles.length ? `Already covered: ${priorTitles.join("; ")}. Don't repeat these, build on them like the next episode of a show.` : "This is the opening lecture — hook them immediately.";
+  const homeworkLine = isLast ? `\nAlso include a "homework" field: one problem the group must solve TOGETHER by discussing it in chat, that draws on all ${LOBBY_LECTURE_COUNT} lectures. Frame it as a challenge, not a chore. 1-2 sentences.` : "";
+  const cliffhangerLine = !isLast ? `\nAlso include a "cliffhanger" field: one punchy, teasing sentence about what's coming in the next lecture, written to make them NOT want to close the tab.` : "";
+  const prompt = `You are Professor Max — but for THIS lobby, you talk like a favorite teacher who's actually funny: sarcastic, blunt, a little chaotic, zero patience for boring textbook language. You're teaching a small group of teenagers studying together live. Topic: "${topic}". This is lecture ${lectureNumber} of ${LOBBY_LECTURE_COUNT} in a series. ${priorLine}
+
+Write like you're narrating a story they can't put down, not a syllabus. Short punchy sentences. Dry humor, roasting, real talk, the occasional all-caps word for emphasis. Never say "in conclusion" or "let's dive in." Assume they have the attention span of a TikTok scroll and you have to out-hook the scroll.${homeworkLine}${cliffhangerLine}
+
+Return ONLY valid JSON, no markdown, no backticks:
+{"hook":"One killer opening line, sarcastic or shocking, that makes it impossible to stop reading","title":"A punchy, slightly cheeky title (not academic)","coreIdea":"3-4 sentences explaining the concept, written with personality and humor, still fully accurate","example":"A concrete, funny, or relatable example — sneak in a joke","discuss":"One open question for the group to argue about, phrased like a dare","takeaway":"One sharp, quotable one-liner they'll actually remember"${isLast ? ',"homework":"The group homework problem"' : ',"cliffhanger":"A teasing one-liner about next lecture"'}}`;
   let raw = "";
   try { raw = await withTimeout(askClaude([{ role: "user", content: prompt }]), 14000, ""); } catch { raw = ""; }
   if (!raw?.trim()) return null;
@@ -1702,6 +1715,8 @@ function LobbyRoom({ user, lobby: initialLobby, roster: initialRoster, profileMa
   const typingTimeoutsRef = useRef({});
   const lastTypingSentRef = useRef(0);
   const myNameRef = useRef("Someone");
+  const nearBottomRef = useRef(true);
+  const holdTimerRef = useRef(null);
 
   useEffect(() => {
     let unsub = () => {};
@@ -1709,10 +1724,13 @@ function LobbyRoom({ user, lobby: initialLobby, roster: initialRoster, profileMa
       const msgs = await getLobbyMessages(lobby.id);
       setMessages(msgs);
       setLoading(false);
-      unsub = subscribeLobbyMessages(lobby.id, (m) => {
-        if (m.user_id === user.id) return; // already shown optimistically when we sent it
-        setMessages(prev => prev.some(p => p.id === m.id) ? prev : [...prev, m]);
-      });
+      unsub = subscribeLobbyMessages(lobby.id,
+        (m) => {
+          if (m.user_id === user.id) return; // already shown optimistically when we sent it
+          setMessages(prev => prev.some(p => p.id === m.id) ? prev : [...prev, m]);
+        },
+        (deleted) => setMessages(prev => prev.filter(p => p.id !== deleted.id))
+      );
     })();
     return () => unsub();
   }, [lobby.id, user.id]);
@@ -1777,8 +1795,24 @@ function LobbyRoom({ user, lobby: initialLobby, roster: initialRoster, profileMa
   }, [lobby.id, lectures.length]);
 
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    // only auto-follow the bottom if the person was already near it — never yank
+    // them down while they're scrolled up reading older messages
+    if (scrollRef.current && nearBottomRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
   }, [messages, typingUsers]);
+
+  const handleChatScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    nearBottomRef.current = (el.scrollHeight - el.scrollTop - el.clientHeight) < 80;
+  };
+
+  // mark seen whenever new messages arrive while we're actually looking at the bottom of the chat
+  useEffect(() => {
+    if (!nearBottomRef.current || messages.length === 0) return;
+    markLobbySeen(lobby.id, user.id);
+  }, [messages, lobby.id, user.id]);
 
   const nameFor = (uid) => uid === user.id ? "You" : (names[uid] || "Student");
   const initials = (name) => (name || "?").trim().split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
@@ -1805,6 +1839,22 @@ function LobbyRoom({ user, lobby: initialLobby, roster: initialRoster, profileMa
     }
     // on error, the optimistic bubble just stays as-is — the person already sees their message
   };
+
+  const handleDeleteMessage = async (msg) => {
+    if (msg.user_id !== user.id) return;
+    if (!confirm("Delete this message?")) return;
+    setMessages(prev => prev.filter(m => m.id !== msg.id));
+    if (!String(msg.id).startsWith("local-")) {
+      await deleteLobbyMessage(msg.id, user.id);
+    }
+  };
+  // hold-to-delete: works for touch and mouse, cancels if released early or dragged away
+  const startHold = (msg) => {
+    if (msg.user_id !== user.id) return;
+    clearTimeout(holdTimerRef.current);
+    holdTimerRef.current = setTimeout(() => handleDeleteMessage(msg), 550);
+  };
+  const cancelHold = () => clearTimeout(holdTimerRef.current);
 
   const toggleInviteFriend = (id) => setInviteSelected(s => {
     const next = new Set(s);
@@ -1967,6 +2017,9 @@ function LobbyRoom({ user, lobby: initialLobby, roster: initialRoster, profileMa
           ) : lecture ? (
             <>
               <p style={{ fontSize: 11, color: "var(--muted)", fontFamily: "var(--font-mono)", marginBottom: 6 }}>Lecture {viewIdx + 1} of {LOBBY_LECTURE_COUNT}</p>
+              {lecture.hook && (
+                <p style={{ fontSize: 15, fontStyle: "italic", color: "var(--accent2)", marginBottom: 10, lineHeight: 1.6 }}>{lecture.hook}</p>
+              )}
               <h2 style={{ fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 400, marginBottom: 18, lineHeight: 1.25 }}>{lecture.title}</h2>
               <p style={{ fontSize: 15, lineHeight: 1.85, color: "var(--ink2)", marginBottom: 22 }}>{lecture.coreIdea}</p>
               {lecture.example && (<>
@@ -1975,12 +2028,17 @@ function LobbyRoom({ user, lobby: initialLobby, roster: initialRoster, profileMa
               </>)}
               {lecture.discuss && (
                 <div className="card" style={{ padding: 16, background: "var(--surface2)", marginBottom: 22 }}>
-                  <p className="label" style={{ marginBottom: 6 }}>Talk it through together</p>
+                  <p className="label" style={{ marginBottom: 6 }}>Fight about this</p>
                   <p style={{ fontSize: 14, lineHeight: 1.7 }}>{lecture.discuss}</p>
                 </div>
               )}
               {lecture.takeaway && (
                 <p style={{ fontSize: 13, color: "var(--muted)", fontStyle: "italic", marginBottom: 22 }}>{lecture.takeaway}</p>
+              )}
+              {lecture.cliffhanger && (
+                <div style={{ padding: "14px 16px", borderLeft: "2px solid var(--accent2)", background: "color-mix(in srgb, var(--accent2) 8%, transparent)", marginBottom: 22 }}>
+                  <p style={{ fontSize: 13, fontWeight: 600 }}>Next up: {lecture.cliffhanger}</p>
+                </div>
               )}
               <div style={{ marginTop: "auto", display: "flex", gap: 8, paddingTop: 12 }}>
                 <button className="btn btn-ghost btn-sm" onClick={() => setViewIdx(i => Math.max(0, i - 1))} disabled={viewIdx === 0}>← Prev</button>
@@ -2000,15 +2058,25 @@ function LobbyRoom({ user, lobby: initialLobby, roster: initialRoster, profileMa
 
         {/* Chat pane */}
         <div style={{ flex: "1 1 0%", maxWidth: 340, display: "flex", flexDirection: "column", minHeight: 0 }} className="lobby-chat-pane">
-          <div ref={scrollRef} className="card" style={{ flex: 1, overflowY: "auto", padding: 14, marginBottom: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div ref={scrollRef} onScroll={handleChatScroll} className="card" style={{ flex: 1, overflowY: "auto", padding: 14, marginBottom: 10, display: "flex", flexDirection: "column", gap: 10 }}>
             {loading ? <p style={{ fontSize: 13, color: "var(--muted)" }}>Loading messages…</p> :
               messages.length === 0 ? <p style={{ fontSize: 13, color: "var(--muted)" }}>No messages yet. Say hi.</p> :
-              messages.map(m => {
+              messages.map((m, i) => {
                 const mine = m.user_id === user.id;
+                const isLastMine = mine && !messages.slice(i + 1).some(later => later.user_id === user.id);
+                const seenBy = isLastMine ? joinedRoster.filter(r => r.user_id !== user.id && r.last_seen_at && new Date(r.last_seen_at) >= new Date(m.created_at)) : [];
                 return (
                   <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: mine ? "flex-end" : "flex-start" }}>
                     <span style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2 }}>{nameFor(m.user_id)}</span>
-                    <span style={{ fontSize: 13, background: mine ? "var(--accent2)" : "var(--surface2)", color: mine ? "#fff" : "var(--ink)", padding: "8px 12px", borderRadius: 12, maxWidth: "85%", wordBreak: "break-word" }}>{m.message}</span>
+                    <span
+                      onMouseDown={() => startHold(m)} onMouseUp={cancelHold} onMouseLeave={cancelHold}
+                      onTouchStart={() => startHold(m)} onTouchEnd={cancelHold} onTouchCancel={cancelHold}
+                      style={{ fontSize: 13, background: mine ? "var(--accent2)" : "var(--surface2)", color: mine ? "#fff" : "var(--ink)", padding: "8px 12px", borderRadius: 12, maxWidth: "85%", wordBreak: "break-word", userSelect: "none", cursor: mine ? "pointer" : "default" }}
+                      title={mine ? "Hold to delete" : undefined}
+                    >{m.message}</span>
+                    {seenBy.length > 0 && (
+                      <span style={{ fontSize: 10, color: "var(--muted)", marginTop: 2 }}>Seen{seenBy.length <= 2 ? ` by ${seenBy.map(r => nameFor(r.user_id)).join(", ")}` : ""}</span>
+                    )}
                   </div>
                 );
               })
