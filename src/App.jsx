@@ -2663,7 +2663,7 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
     setLectureError(false);
     const cacheKey=`${roadmapSlug(roadmap)}-m${currentMonth}w${currentWeek}d${currentDay}`;
     if(!isDemo&&user?.id){const cached=await withTimeout(getCachedLectures(user.id,cacheKey), 6000, null);if(cached&&cached.length>=3){setLectures(cached);setLoading(false);return;}}
-    const prompt=`You are a world-class mentor teaching a 14-year-old beginner.\nWeek topic: "${weekTopic}"\nSubject: "${roadmap.title}"\nToday is Day ${currentDay} of 7 this week.\nFor Day ${currentDay}, cover sub-topics ${(currentDay-1)*5+1} to ${currentDay*5} of "${weekTopic}". Do NOT repeat previous days.\nGenerate EXACTLY 5 lectures. Return ONLY valid JSON. No markdown, no backticks.\n{"lectures":[{"num":1,"title":"Clear concise title","coreIdea":"2-3 sentences","example":"Real-world example","action":"One task","mistake":"One mistake","takeaway":"One sentence"},{"num":2,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":3,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":4,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"..."},{"num":5,"title":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"...","homework":["Task 1","Task 2"]}]}`;
+    const prompt=`You are Professor Max — but you talk like the funniest, most brutally honest mentor a 14-year-old beginner has ever had. Sarcastic, blunt, a little chaotic, zero patience for boring textbook language. You're teaching them like you're narrating a story they can't put down, not writing a syllabus. Short punchy sentences. Dry humor, mild roasting, real talk, the occasional all-caps word for emphasis. Never say "in conclusion" or "let's dive in." Assume they have the attention span of a TikTok scroll and you have to out-hook the scroll — every lecture should make it physically hard to stop reading.\nWeek topic: "${weekTopic}"\nSubject: "${roadmap.title}"\nToday is Day ${currentDay} of 7 this week.\nFor Day ${currentDay}, cover sub-topics ${(currentDay-1)*5+1} to ${currentDay*5} of "${weekTopic}". Do NOT repeat previous days.\nGenerate EXACTLY 5 lectures, each building on the last like episodes of a series. Lectures 1-4 each end with a "cliffhanger" teasing the next one. Lecture 5 replaces "cliffhanger" with a "homework" array instead. Return ONLY valid JSON. No markdown, no backticks.\n{"lectures":[{"num":1,"title":"Punchy, slightly cheeky title (not academic)","hook":"One killer opening line, sarcastic or shocking, that makes it impossible to stop reading","coreIdea":"2-3 sentences, written with personality and humor, still fully accurate","example":"A concrete, funny, or relatable example — sneak in a joke","action":"One task, framed like a dare not a chore","mistake":"One common mistake, described like you're roasting past students who made it","takeaway":"One sharp, quotable one-liner they'll actually remember","cliffhanger":"A teasing one-liner about the next lecture"},{"num":2,"title":"...","hook":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"...","cliffhanger":"..."},{"num":3,"title":"...","hook":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"...","cliffhanger":"..."},{"num":4,"title":"...","hook":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"...","cliffhanger":"..."},{"num":5,"title":"...","hook":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"...","homework":["Task 1","Task 2"]}]}`;
     // Retry once (real content > filler). A retry also gets a fresh shot at
     // askClaude's session-refresh check above, so a transient 401 self-heals.
     let parsed=null;
@@ -2833,6 +2833,10 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
                 </div>
               </div>
 
+              {lec.hook && (
+                <p style={{ fontSize: 15, fontStyle: "italic", color: "var(--accent2)", marginBottom: 4, marginTop: -4, lineHeight: 1.6 }}>{lec.hook}</p>
+              )}
+
               <div className="lec-sections">
                 {lec.coreIdea && (
                   <div className="lec-section">
@@ -2891,6 +2895,12 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
                       <p className="lec-text" style={{ paddingTop: 2 }}>{t}</p>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {lec.cliffhanger && (
+                <div style={{ padding: "14px 16px", borderLeft: "2px solid var(--accent2)", background: "color-mix(in srgb, var(--accent2) 8%, transparent)", marginTop: 16, marginBottom: 4 }}>
+                  <p style={{ fontSize: 13, fontWeight: 600 }}>Next up: {lec.cliffhanger}</p>
                 </div>
               )}
 
