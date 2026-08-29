@@ -614,7 +614,6 @@ const css = `
   .theme-toggle{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:999px;border:1px solid var(--border2);background:var(--surface2);color:var(--ink2);cursor:pointer;transition:all 0.15s;flex-shrink:0;}
   .theme-toggle:hover{border-color:var(--border3);color:var(--ink);}
   .nav-logo{font-family:var(--font);font-weight:700;font-size:14px;color:var(--ink);letter-spacing:0.05em;text-transform:uppercase;display:flex;align-items:center;gap:8px;}
-  .nav-logo-dot{width:6px;height:6px;background:var(--accent2);border-radius:50%;box-shadow:0 0 8px var(--accent2);animation:pulse 2s ease-in-out infinite;}
   .nav-links{display:flex;align-items:center;gap:4px;}
   .nav-link{font-size:13px;font-weight:400;color:var(--muted);background:none;border:none;cursor:pointer;padding:6px 12px;border-radius:6px;font-family:var(--font);transition:all 0.15s;}
   .nav-link:hover{color:var(--ink);}
@@ -1298,7 +1297,7 @@ function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, isDemo, onSignU
   return (
     <>
       <nav className="nav">
-        <div className="nav-logo"><div className="nav-logo-dot"/><span>Velorn</span></div>
+        <div className="nav-logo"><span>Velorn</span></div>
         {user && (<div className="nav-links">{links.map(p=>(<button key={p} onClick={()=>{onNav(p);setMobileOpen(false);}} className={`nav-link ${page===p?"active":""}`}>{p==="learn"?"Learn":p==="test"?"Test":p==="friends"?"Friends":p==="onboard"?"New Topic":"Dashboard"}</button>))}</div>)}
         <div className="row gap-8">
           <button onClick={onToggleTheme} className="theme-toggle" aria-label="Toggle light or dark mode" title={theme==="dark"?"Switch to light mode":"Switch to dark mode"} style={{width:32,height:32,minWidth:32,minHeight:32,padding:0,borderRadius:999,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--ink2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
