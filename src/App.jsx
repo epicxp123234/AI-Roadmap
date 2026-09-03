@@ -2671,10 +2671,12 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
   // NEW STATE
   const[showTeachMe,setShowTeachMe]=useState(false);
   const[lectureError,setLectureError]=useState(false);
+  const[loadSeconds,setLoadSeconds]=useState(0);
 
   const loadLectures=useCallback(async()=>{
     setLoading(true);
     setLectureError(false);
+    setLoadSeconds(0);
     // Demo mode has no auth session, so any AI call here would 401 every
     // time (that's exactly what was happening before this fix). Serve
     // static canned lectures instead — instant, reliable, no live AI cost.
@@ -2682,12 +2684,17 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
     const cacheKey=`${roadmapSlug(roadmap)}-m${currentMonth}w${currentWeek}d${currentDay}`;
     if(!isDemo&&user?.id){const cached=await withTimeout(getCachedLectures(user.id,cacheKey), 6000, null);if(cached&&cached.length>=3){setLectures(cached);setLoading(false);return;}}
     const prompt=`You are Professor Max — but you talk like the funniest, most brutally honest mentor a 14-year-old beginner has ever had. Sarcastic, blunt, a little chaotic, zero patience for boring textbook language. You're teaching them like you're narrating a story they can't put down, not writing a syllabus. Short punchy sentences. Dry humor, mild roasting, real talk, the occasional all-caps word for emphasis. Never say "in conclusion" or "let's dive in." Assume they have the attention span of a TikTok scroll and you have to out-hook the scroll — every lecture should make it physically hard to stop reading.\nWeek topic: "${weekTopic}"\nSubject: "${roadmap.title}"\nToday is Day ${currentDay} of 7 this week.\nFor Day ${currentDay}, cover sub-topics ${(currentDay-1)*5+1} to ${currentDay*5} of "${weekTopic}". Do NOT repeat previous days.\nGenerate EXACTLY 5 lectures, each building on the last like episodes of a series. Lectures 1-4 each end with a "cliffhanger" teasing the next one. Lecture 5 replaces "cliffhanger" with a "homework" array instead. Return ONLY valid JSON. No markdown, no backticks.\n{"lectures":[{"num":1,"title":"Punchy, slightly cheeky title (not academic)","hook":"One killer opening line, sarcastic or shocking, that makes it impossible to stop reading","coreIdea":"2-3 sentences, written with personality and humor, still fully accurate","example":"A concrete, funny, or relatable example — sneak in a joke","action":"One task, framed like a dare not a chore","mistake":"One common mistake, described like you're roasting past students who made it","takeaway":"One sharp, quotable one-liner they'll actually remember","cliffhanger":"A teasing one-liner about the next lecture"},{"num":2,"title":"...","hook":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"...","cliffhanger":"..."},{"num":3,"title":"...","hook":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"...","cliffhanger":"..."},{"num":4,"title":"...","hook":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"...","cliffhanger":"..."},{"num":5,"title":"...","hook":"...","coreIdea":"...","example":"...","action":"...","mistake":"...","takeaway":"...","homework":["Task 1","Task 2"]}]}`;
-    // Retry once (real content > filler). A retry also gets a fresh shot at
-    // askClaude's session-refresh check above, so a transient 401 self-heals.
+    // One attempt, but a generous one: the ask-doubt edge function already
+    // chains groq-primary -> groq-fallback -> nvidia-nim server-side (up to
+    // ~15s each, ~45s worst case) before giving up. A short client timeout
+    // was cutting that chain off early and forcing a redundant client retry
+    // that just re-triggered the whole 3-provider chain again. 50s gives the
+    // real fallback chain room to finish; the tick counter below keeps the
+    // screen visibly alive so it doesn't read as frozen/broken.
+    const tick=setInterval(()=>setLoadSeconds(s=>s+1),1000);
     let parsed=null;
-    for(let attempt=0; attempt<2 && !parsed; attempt++){
-      let raw="";
-      try{raw=await withTimeout(askClaude([{role:"user",content:prompt}]), 12000, "");}catch{raw="";}
+    try{
+      const raw=await withTimeout(askClaude([{role:"user",content:prompt}]), 50000, "");
       if(raw?.trim()){
         try{
           let c=raw.trim().replace(/```json|```/gi,"").replace(/,(\s*[}\]])/g,"$1");
@@ -2695,15 +2702,15 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
           if(m){const p=JSON.parse(m[0]);const a=p.lectures&&Array.isArray(p.lectures)?p.lectures:[];if(a.length>=3)parsed=a;}
         }catch(e){console.warn("Parse failed:",e.message);}
       }
-    }
+    }finally{clearInterval(tick);}
     if(parsed){
       setLectures(parsed);
       if(!isDemo&&user?.id)await saveCachedLectures(user.id,cacheKey,parsed);
       setLoading(false);
       return;
     }
-    // Both attempts failed — show an honest error with a retry action instead
-    // of silently serving generic filler content (title-only, no real substance).
+    // The full 50s window passed with nothing usable — show an honest error
+    // with a retry action instead of silently serving generic filler content.
     setLectureError(true);
     setLoading(false);
   }, [currentMonth, currentWeek, currentDay, isDemo, user?.id, weekTopic, roadmap.title]);
@@ -2744,15 +2751,20 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
 
   const getTakeaway=(lec)=>lec.keyTakeaway||lec.takeaway||"";
 
-  if(loading)return(
-    <div className="learn-loading page container">
-      <div className="learn-loading-ring"/>
-      <div style={{textAlign:"center"}}>
-        <p className="learn-loading-text">Preparing Day {currentDay} lectures…</p>
-        <p className="learn-loading-sub">{weekTopic}</p>
+  if(loading){
+    const loadPct=Math.min(100,Math.round((loadSeconds/50)*100));
+    const loadMsg=loadSeconds<8?`Preparing Day ${currentDay} lectures…`:loadSeconds<25?"Still working on it — Professor Max is drafting today's hook…":"Almost there — hang tight, this one's worth the wait…";
+    return(
+      <div className="learn-loading page container">
+        <div className="learn-loading-ring"/>
+        <div style={{textAlign:"center",width:"100%",maxWidth:280}}>
+          <p className="learn-loading-text">{loadMsg}</p>
+          <p className="learn-loading-sub" style={{marginBottom:14}}>{weekTopic}</p>
+          <div className="progress-track" style={{height:2}}><div className="progress-fill" style={{width:`${loadPct}%`,transition:"width 1s linear"}}/></div>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   if(lectureError)return(
     <div className="learn-loading page container">
@@ -3034,16 +3046,18 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
 function WeeklyTest({ progress, roadmap }) {
   const{currentWeek=1,currentMonth=1}=progress;
   const month=roadmap.months[currentMonth-1];const week=month?.weeks[currentWeek-1];const topic=week?.testTopic??week?.goal??"Core Concepts";
-  const[questions,setQuestions]=useState(null);const[loading,setLoading]=useState(false);const[answers,setAnswers]=useState({});const[submitted,setSubmitted]=useState(false);const[score,setScore]=useState(0);const[currentQ,setCurrentQ]=useState(0);const[testError,setTestError]=useState(false);
+  const[questions,setQuestions]=useState(null);const[loading,setLoading]=useState(false);const[answers,setAnswers]=useState({});const[submitted,setSubmitted]=useState(false);const[score,setScore]=useState(0);const[currentQ,setCurrentQ]=useState(0);const[testError,setTestError]=useState(false);const[loadSeconds,setLoadSeconds]=useState(0);
   const loadTest=async()=>{
-    setLoading(true);setSubmitted(false);setAnswers({});setCurrentQ(0);setTestError(false);
-    // Retry once (real questions > filler). Mirrors the lecture-loading fix:
-    // a transient Groq/JSON hiccup shouldn't silently hand the student a test
-    // made of literal "Option A/B/C/D" placeholders.
+    setLoading(true);setSubmitted(false);setAnswers({});setCurrentQ(0);setTestError(false);setLoadSeconds(0);
+    // One generous attempt instead of two short ones: the ask-doubt edge
+    // function already chains groq-primary -> groq-fallback -> nvidia-nim
+    // server-side (~15s each, ~45s worst case) before giving up. 50s gives
+    // that real fallback chain room to finish rather than the client cutting
+    // it off early. The tick counter keeps the screen visibly alive.
+    const tick=setInterval(()=>setLoadSeconds(s=>s+1),1000);
     let parsed=null;
-    for(let attempt=0; attempt<2 && !parsed; attempt++){
-      let raw="";
-      try{raw=await withTimeout(askClaude([{role:"user",content:`Create 25 multiple choice questions for a student learning about "${topic}".\nReturn ONLY JSON:\n{"questions":[{"q":"Question?","options":["A) answer","B) answer","C) answer","D) answer"],"answer":"A","explanation":"Why"}]}`}]), 15000, "");}catch{raw="";}
+    try{
+      const raw=await withTimeout(askClaude([{role:"user",content:`Create 25 multiple choice questions for a student learning about "${topic}".\nReturn ONLY JSON:\n{"questions":[{"q":"Question?","options":["A) answer","B) answer","C) answer","D) answer"],"answer":"A","explanation":"Why"}]}`}]), 50000, "");
       if(raw?.trim()){
         try{
           let c=raw.trim().replace(/```json|```/gi,"").replace(/,(\s*[}\]])/g,"$1");
@@ -3051,10 +3065,10 @@ function WeeklyTest({ progress, roadmap }) {
           if(m){const d=JSON.parse(m[0]);if(d.questions?.length>=10)parsed=d.questions.slice(0,25);}
         }catch(e){console.warn("Test parse failed:",e.message);}
       }
-    }
+    }finally{clearInterval(tick);}
     if(parsed){setQuestions(parsed);setLoading(false);return;}
-    // Both attempts failed — show an honest error with a retry action instead
-    // of silently serving placeholder questions.
+    // The full 50s window passed with nothing usable — show an honest error
+    // with a retry action instead of silently serving placeholder questions.
     setTestError(true);setLoading(false);
   };
   const submit=()=>{let s=0;questions.forEach((q,i)=>{if(answers[i]===q.answer)s++;});setScore(s);setSubmitted(true);setCurrentQ(0);};
@@ -3069,7 +3083,13 @@ function WeeklyTest({ progress, roadmap }) {
       </div>
       {testError&&(<div style={{textAlign:"center",padding:"60px 20px"}}><p style={{fontFamily:"var(--font-display)",fontSize:20,marginBottom:8}}>Couldn't generate this week's test.</p><p style={{color:"var(--muted)",marginBottom:20,fontSize:13,fontFamily:"var(--font-mono)"}}>This usually clears up on retry — sometimes a session hiccup or a slow connection.</p><button className="btn btn-primary" onClick={loadTest}>Try again</button></div>)}
       {!questions&&!loading&&!testError&&(<div style={{textAlign:"center",padding:"60px 20px"}}><div style={{width:60,height:60,borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",color:"var(--accent2)"}}><Icon.CheckSquare/></div><h3 style={{fontFamily:"var(--font-display)",fontSize:26,fontWeight:400,marginBottom:8}}>Ready to test your knowledge?</h3><p style={{color:"var(--muted)",marginBottom:28,fontSize:13,fontFamily:"var(--font-mono)"}}>25 questions on {topic}. No time limit.</p><button className="btn btn-primary btn-lg" style={{margin:"0 auto"}} onClick={loadTest}>Start Assessment →</button></div>)}
-      {loading&&(<div style={{textAlign:"center",padding:"60px 20px"}}><div style={{width:36,height:36,border:"1px solid var(--border2)",borderTop:"1px solid var(--accent2)",borderRadius:"50%",animation:"spin 0.8s linear infinite",margin:"0 auto 14px"}}/><p style={{fontSize:12,color:"var(--muted)",fontFamily:"var(--font-mono)"}}>Generating questions…</p></div>)}
+      {loading&&(()=>{const loadPct=Math.min(100,Math.round((loadSeconds/50)*100));const loadMsg=loadSeconds<8?"Generating questions…":loadSeconds<25?"Still working on it — writing out all 25 questions…":"Almost there — hang tight…";return(
+        <div style={{textAlign:"center",padding:"60px 20px"}}>
+          <div style={{width:36,height:36,border:"1px solid var(--border2)",borderTop:"1px solid var(--accent2)",borderRadius:"50%",animation:"spin 0.8s linear infinite",margin:"0 auto 14px"}}/>
+          <p style={{fontSize:12,color:"var(--muted)",fontFamily:"var(--font-mono)",marginBottom:12}}>{loadMsg}</p>
+          <div className="progress-track" style={{height:2,maxWidth:220,margin:"0 auto"}}><div className="progress-fill" style={{width:`${loadPct}%`,transition:"width 1s linear"}}/></div>
+        </div>
+      );})()}
       {questions&&!submitted&&(
         <div>
           <div className="card card-p" style={{marginBottom:14}}>
