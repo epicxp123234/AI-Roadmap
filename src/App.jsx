@@ -3034,14 +3034,28 @@ function Learn({ progress, roadmap, onUpdateProgress, user, isDemo }) {
 function WeeklyTest({ progress, roadmap }) {
   const{currentWeek=1,currentMonth=1}=progress;
   const month=roadmap.months[currentMonth-1];const week=month?.weeks[currentWeek-1];const topic=week?.testTopic??week?.goal??"Core Concepts";
-  const[questions,setQuestions]=useState(null);const[loading,setLoading]=useState(false);const[answers,setAnswers]=useState({});const[submitted,setSubmitted]=useState(false);const[score,setScore]=useState(0);const[currentQ,setCurrentQ]=useState(0);
+  const[questions,setQuestions]=useState(null);const[loading,setLoading]=useState(false);const[answers,setAnswers]=useState({});const[submitted,setSubmitted]=useState(false);const[score,setScore]=useState(0);const[currentQ,setCurrentQ]=useState(0);const[testError,setTestError]=useState(false);
   const loadTest=async()=>{
-    setLoading(true);setSubmitted(false);setAnswers({});setCurrentQ(0);let allQ=[];
-    try{const raw=await askClaude([{role:"user",content:`Create 25 multiple choice questions for a student learning about "${topic}".\nReturn ONLY JSON:\n{"questions":[{"q":"Question?","options":["A) answer","B) answer","C) answer","D) answer"],"answer":"A","explanation":"Why"}]}`}]);
-      let c=raw.trim().replace(/```json|```/gi,"").replace(/,(\s*[}\]])/g,"$1");const m=c.match(/\{[\s\S]*\}/);if(m){const d=JSON.parse(m[0]);if(d.questions?.length>0)allQ=d.questions.slice(0,25);}
-    }catch{allQ=[];}
-    if(allQ.length===0)allQ=Array.from({length:25},(_,i)=>({q:`Question ${i+1}: What is an important concept in ${topic}?`,options:["A) Option A","B) Option B","C) Option C","D) Option D"],answer:"A",explanation:`This is a key concept in ${topic}.`}));
-    setQuestions(allQ);setLoading(false);
+    setLoading(true);setSubmitted(false);setAnswers({});setCurrentQ(0);setTestError(false);
+    // Retry once (real questions > filler). Mirrors the lecture-loading fix:
+    // a transient Groq/JSON hiccup shouldn't silently hand the student a test
+    // made of literal "Option A/B/C/D" placeholders.
+    let parsed=null;
+    for(let attempt=0; attempt<2 && !parsed; attempt++){
+      let raw="";
+      try{raw=await withTimeout(askClaude([{role:"user",content:`Create 25 multiple choice questions for a student learning about "${topic}".\nReturn ONLY JSON:\n{"questions":[{"q":"Question?","options":["A) answer","B) answer","C) answer","D) answer"],"answer":"A","explanation":"Why"}]}`}]), 15000, "");}catch{raw="";}
+      if(raw?.trim()){
+        try{
+          let c=raw.trim().replace(/```json|```/gi,"").replace(/,(\s*[}\]])/g,"$1");
+          const m=c.match(/\{[\s\S]*\}/);
+          if(m){const d=JSON.parse(m[0]);if(d.questions?.length>=10)parsed=d.questions.slice(0,25);}
+        }catch(e){console.warn("Test parse failed:",e.message);}
+      }
+    }
+    if(parsed){setQuestions(parsed);setLoading(false);return;}
+    // Both attempts failed — show an honest error with a retry action instead
+    // of silently serving placeholder questions.
+    setTestError(true);setLoading(false);
   };
   const submit=()=>{let s=0;questions.forEach((q,i)=>{if(answers[i]===q.answer)s++;});setScore(s);setSubmitted(true);setCurrentQ(0);};
   const pct=questions?Math.round((Object.keys(answers).length/questions.length)*100):0;
@@ -3053,7 +3067,8 @@ function WeeklyTest({ progress, roadmap }) {
         <h2 style={{fontFamily:"var(--font-display)",fontSize:22,fontWeight:400,marginBottom:2}}>Weekly Assessment</h2>
         <p style={{fontSize:11,color:"var(--muted)",fontFamily:"var(--font-mono)"}}>{topic}</p>
       </div>
-      {!questions&&!loading&&(<div style={{textAlign:"center",padding:"60px 20px"}}><div style={{width:60,height:60,borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",color:"var(--accent2)"}}><Icon.CheckSquare/></div><h3 style={{fontFamily:"var(--font-display)",fontSize:26,fontWeight:400,marginBottom:8}}>Ready to test your knowledge?</h3><p style={{color:"var(--muted)",marginBottom:28,fontSize:13,fontFamily:"var(--font-mono)"}}>25 questions on {topic}. No time limit.</p><button className="btn btn-primary btn-lg" style={{margin:"0 auto"}} onClick={loadTest}>Start Assessment →</button></div>)}
+      {testError&&(<div style={{textAlign:"center",padding:"60px 20px"}}><p style={{fontFamily:"var(--font-display)",fontSize:20,marginBottom:8}}>Couldn't generate this week's test.</p><p style={{color:"var(--muted)",marginBottom:20,fontSize:13,fontFamily:"var(--font-mono)"}}>This usually clears up on retry — sometimes a session hiccup or a slow connection.</p><button className="btn btn-primary" onClick={loadTest}>Try again</button></div>)}
+      {!questions&&!loading&&!testError&&(<div style={{textAlign:"center",padding:"60px 20px"}}><div style={{width:60,height:60,borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",color:"var(--accent2)"}}><Icon.CheckSquare/></div><h3 style={{fontFamily:"var(--font-display)",fontSize:26,fontWeight:400,marginBottom:8}}>Ready to test your knowledge?</h3><p style={{color:"var(--muted)",marginBottom:28,fontSize:13,fontFamily:"var(--font-mono)"}}>25 questions on {topic}. No time limit.</p><button className="btn btn-primary btn-lg" style={{margin:"0 auto"}} onClick={loadTest}>Start Assessment →</button></div>)}
       {loading&&(<div style={{textAlign:"center",padding:"60px 20px"}}><div style={{width:36,height:36,border:"1px solid var(--border2)",borderTop:"1px solid var(--accent2)",borderRadius:"50%",animation:"spin 0.8s linear infinite",margin:"0 auto 14px"}}/><p style={{fontSize:12,color:"var(--muted)",fontFamily:"var(--font-mono)"}}>Generating questions…</p></div>)}
       {questions&&!submitted&&(
         <div>
