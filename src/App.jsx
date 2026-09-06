@@ -835,10 +835,14 @@ const css = `
   @media(max-width:768px){
     .nav{padding:0 20px;}
     .nav-links{display:none;}
+    .nav-icon-btn{display:none;}
     .hamburger{display:flex;}
     .container{padding:0 20px;}
     .container-wide{padding:0 20px;}
+    .card-p{padding:16px;}
     .card-p-lg{padding:20px;}
+    .btn-primary,.btn-outline{padding:9px 16px;}
+    .btn-secondary{padding:9px 14px;}
     .lobby-room-panes{flex-direction:column !important;}
     .lobby-chat-pane{max-width:none !important;max-height:280px;}
     .hero-layout{flex-direction:column!important;text-align:center;}
@@ -1315,13 +1319,13 @@ function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, isDemo, onSignU
         <div className="nav-logo"><span>Velorn</span></div>
         {user && (<div className="nav-links">{links.map(p=>(<button key={p} onClick={()=>{onNav(p);setMobileOpen(false);}} className={`nav-link ${page===p?"active":""}`}>{p==="learn"?"Learn":p==="test"?"Test":p==="friends"?"Friends":p==="onboard"?"New Topic":"Dashboard"}</button>))}</div>)}
         <div className="row gap-8">
-          <button onClick={onToggleTheme} className="theme-toggle" aria-label="Toggle light or dark mode" title={theme==="dark"?"Switch to light mode":"Switch to dark mode"} style={{width:32,height:32,minWidth:32,minHeight:32,padding:0,borderRadius:999,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--ink2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
+          <button onClick={onToggleTheme} className="theme-toggle nav-icon-btn" aria-label="Toggle light or dark mode" title={theme==="dark"?"Switch to light mode":"Switch to dark mode"} style={{width:32,height:32,minWidth:32,minHeight:32,padding:0,borderRadius:999,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--ink2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
             {theme==="dark"?<Icon.Sun/>:<Icon.Moon/>}
           </button>
         
           
-          {user && !isDemo && <button onClick={onOpenEmailSettings} className="btn btn-ghost btn-sm row gap-6"><Icon.Bell/></button>}
-          {user && (isDemo ? <button className="btn btn-primary btn-sm" onClick={onSignUp}>Sign Up</button> : <button className="btn btn-ghost btn-sm btn-icon" onClick={onLogout}><Icon.LogOut/></button>)}
+          {user && !isDemo && <button onClick={onOpenEmailSettings} className="btn btn-ghost btn-sm row gap-6 nav-icon-btn"><Icon.Bell/></button>}
+          {user && (isDemo ? <button className="btn btn-primary btn-sm" onClick={onSignUp}>Sign Up</button> : <button className="btn btn-ghost btn-sm btn-icon nav-icon-btn" onClick={onLogout}><Icon.LogOut/></button>)}
           {user && <button className="hamburger" onClick={()=>setMobileOpen(o=>!o)}><Icon.Menu/></button>}
           {!user && <button className="btn btn-outline btn-sm" onClick={()=>onNav("auth")}>Sign In</button>}
         </div>
@@ -1330,6 +1334,7 @@ function Nav({ user, onLogout, onNav, page, onOpenEmailSettings, isDemo, onSignU
         <div className={`mobile-nav ${mobileOpen?"open":""}`}>
           {links.map(p=>(<button key={p} onClick={()=>{onNav(p);setMobileOpen(false);}} className={`mobile-nav-link ${page===p?"active":""}`}>{p==="learn"?"Learn":p==="test"?"Test":p==="friends"?"Friends":p==="onboard"?"New Topic":"Dashboard"}</button>))}
           <button className="mobile-nav-link" onClick={()=>{onOpenEmailSettings();setMobileOpen(false);}}>Reminders</button>
+          <button className="mobile-nav-link" onClick={()=>{onToggleTheme();setMobileOpen(false);}}>{theme==="dark"?"Light mode":"Dark mode"}</button>
           <button className="mobile-nav-link" style={{color:"var(--ember)"}} onClick={()=>{onLogout();setMobileOpen(false);}}>Sign Out</button>
         </div>
       )}
