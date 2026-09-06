@@ -128,6 +128,16 @@ async function getProgress(userId) {
   return data;
 }
 async function upsertProgress(userId, fields) { await supabase.from("progress").upsert({ user_id: userId, ...fields, updated_at: new Date().toISOString() }, { onConflict: "user_id" }); }
+// One row per user per calendar day. This is the only real history of when
+// people actually showed up — `progress.last_visit` only ever holds the
+// single most recent date, so it can't answer "how many distinct days did
+// this person visit this week" or "who came back on non-consecutive days".
+// Fire-and-forget: a failed visit log should never block app load.
+function logDailyVisit(userId) {
+  if(!userId) return;
+  const today=new Date().toISOString().slice(0,10);
+  supabase.from("daily_visits").upsert({ user_id: userId, visit_date: today }, { onConflict: "user_id,visit_date", ignoreDuplicates: true }).then(()=>{}).catch(()=>{});
+}
 function initialProgressFields() { return { current_month:1, current_week:1, current_day:1, streak:0, completed_days:[], last_visit:new Date().toISOString().slice(0,10) }; }
 async function saveTaskSubmission(userId, data) { await supabase.from("task_submissions").upsert({ user_id: userId, week_key: data.weekKey, career: data.career, task_title: data.taskTitle, answers: data.answers, feedback: data.feedback, submitted_at: new Date().toISOString() }, { onConflict: "user_id,week_key" }); }
 async function getCachedLectures(userId, key) { const { data } = await supabase.from("lecture_cache").select("lectures").eq("user_id", userId).eq("roadmap_key", key).maybeSingle(); return data?.lectures || null; }
@@ -3196,6 +3206,7 @@ export default function App() {
     setProfile(prof);
     saveKnownDeviceUser(authUser, prof);
     const today=new Date().toISOString().slice(0,10);
+    logDailyVisit(authUser.id);
 
     if(rm?.data){
       setRoadmap(rm.data);
