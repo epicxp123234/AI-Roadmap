@@ -762,7 +762,7 @@ const css = `
   .quick-track-card{display:flex;flex-direction:column;gap:5px;text-align:left;padding:12px;border-radius:8px;border:1px solid var(--border);border-left:2px solid var(--track-accent);background:var(--surface);color:var(--ink);font-family:var(--font);cursor:pointer;transition:all 0.18s;min-height:118px;}
   .quick-track-card:hover{transform:translateY(-1px);background:var(--surface2);border-color:var(--border2);}
   .quick-track-card strong{font-size:14px;font-weight:600;line-height:1.25;}
-  .quick-track-card span:last-child{font-size:11px;line-height:1.5;color:var(--muted);}
+  .quick-track-summary{font-size:11px;line-height:1.5;color:var(--muted);}
   .quick-track-label{font-family:var(--font-mono);font-size:9px!important;letter-spacing:0.12em;text-transform:uppercase;color:var(--track-accent)!important;}
   .demo-banner{background:var(--surface);border-bottom:1px solid var(--border);padding:9px 24px;display:flex;align-items:center;justify-content:center;gap:14px;font-size:12px;color:var(--ink2);position:fixed;top:60px;left:0;right:0;z-index:150;}
   .section-label{font-family:var(--font-mono);font-size:10px;letter-spacing:0.2em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:12px;}
@@ -848,7 +848,10 @@ const css = `
     .hero-layout{flex-direction:column!important;text-align:center;}
     .hero-text{max-width:100%!important;}
     .hero-brain{width:260px!important;height:260px!important;margin:0 auto;}
-    .quick-track-card{min-height:auto;}
+    .quick-track-card{min-height:auto;padding:10px 8px;}
+    .quick-track-summary{display:none;}
+    .quick-track-card strong{font-size:12px;}
+    .quick-track-label{font-size:9px!important;}
     .feynman-steps{grid-template-columns:1fr!important;}
     .feynman-step{min-height:auto;}
     .hero-text > div[style*="repeat(3,1fr)"]{grid-template-columns:1fr!important;}
@@ -881,7 +884,7 @@ const css = `
   @keyframes dotPop{0%{transform:scale(0.4);opacity:0;}60%{transform:scale(1.15);}100%{transform:scale(1);opacity:1;}}
   .streak-flame{display:inline-block;animation:flameFlicker 1.8s ease-in-out infinite;}
   .floating-xp{position:fixed;pointer-events:none;font-family:var(--font-display);font-style:italic;font-weight:600;font-size:19px;color:var(--gold);z-index:9002;animation:floatUpFade 1.5s ease-out forwards;text-shadow:0 1px 6px rgba(0,0,0,0.15);}
-  .hero-continue-btn{position:relative;overflow:hidden;background:linear-gradient(100deg,var(--accent2) 0%,var(--gold) 25%,var(--accent2) 50%,var(--gold) 75%,var(--accent2) 100%);background-size:250% 100%;animation:shimmerMove 5s linear infinite;color:#fff;border:none;border-radius:14px;padding:20px 28px;font-family:var(--font);font-size:17px;font-weight:600;letter-spacing:0.01em;cursor:pointer;box-shadow:0 12px 32px rgba(74,90,53,0.32);width:100%;transition:transform 0.15s;}
+  .hero-continue-btn{position:relative;overflow:hidden;background:linear-gradient(100deg,var(--accent) 0%,var(--accent3) 25%,var(--accent) 50%,var(--accent3) 75%,var(--accent) 100%);background-size:250% 100%;animation:shimmerMove 5s linear infinite;color:#fff;border:none;border-radius:14px;padding:20px 28px;font-family:var(--font);font-size:17px;font-weight:600;letter-spacing:0.01em;cursor:pointer;box-shadow:0 12px 32px rgba(74,90,53,0.32);width:100%;transition:transform 0.15s;}
   .hero-continue-btn:hover{transform:translateY(-2px);}
   .hero-continue-btn:active{transform:translateY(0);}
   .journey-scroll{display:flex;align-items:flex-end;gap:0;overflow-x:auto;padding:36px 20px 24px;-webkit-overflow-scrolling:touch;}
@@ -1608,12 +1611,12 @@ function Onboarding({ user, profile, onDone, initialTopic = "", initialTrack = n
         </div>
         <div className="stack gap-14">
           <div className="field"><label className="label">What do you want to learn?</label><input className="input" placeholder="e.g. Quantum physics, Guitar, Python, Chess" value={form.career} onChange={e=>set("career",e.target.value)}/></div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+          <div className="track-grid" style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
             {SUGGESTED_TRACKS.map(track=>(
               <button key={track.id} type="button" onClick={()=>applyTrack(track)} className="quick-track-card" style={{"--track-accent":track.accent,borderColor:form.trackId===track.id?"var(--border3)":"var(--border)",background:form.trackId===track.id?"var(--surface2)":"var(--surface)",minHeight:120}}>
                 <span className="quick-track-label">{form.trackId===track.id?"Selected":"Quick start"}</span>
                 <strong>{track.title}</strong>
-                <span>{track.summary}</span>
+                <span className="quick-track-summary">{track.summary}</span>
               </button>
             ))}
           </div>
