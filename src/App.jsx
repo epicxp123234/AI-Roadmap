@@ -868,6 +868,7 @@ const css = `
     .prof-sidekick{display:none;}
     .teach-modal{max-height:90vh;}
     .welcome-card{padding:32px 24px;}
+    .hero-build-btn{padding:15px 14px!important;font-size:12px!important;}
   }
   @media(max-width:480px){
     .stats-grid{grid-template-columns:repeat(2,1fr)!important;}
@@ -1384,8 +1385,8 @@ function Landing({ onStart, onDemo, onTrack }) {
 
         <div style={{display:"flex",justifyContent:"center",marginBottom:16}}>
           <div style={{display:"flex",alignItems:"center",background:"var(--surface)",border:`1px solid ${focused?"var(--accent)":"var(--border2)"}`,overflow:"hidden",width:"min(480px,92vw)"}}>
-            <input value={typed} onChange={e=>setTyped(e.target.value)} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} placeholder={`e.g. ${LANDING_EXAMPLES[exIdx]}`} style={{flex:1,padding:"14px 16px",border:"none",outline:"none",fontSize:14,fontFamily:"var(--font)",background:"transparent",color:"var(--ink)"}} onKeyDown={e=>e.key==="Enter"&&onStart(typed)}/>
-            <button style={{margin:0,border:"none",background:"var(--accent)",color:"var(--bg)",fontFamily:"var(--font)",fontWeight:600,fontSize:13,padding:"15px 20px",cursor:"pointer",flexShrink:0}} onClick={()=>onStart(typed)}>Build Roadmap →</button>
+            <input value={typed} onChange={e=>setTyped(e.target.value)} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} placeholder={`e.g. ${LANDING_EXAMPLES[exIdx]}`} style={{flex:1,minWidth:0,padding:"14px 16px",border:"none",outline:"none",fontSize:14,fontFamily:"var(--font)",background:"transparent",color:"var(--ink)"}} onKeyDown={e=>e.key==="Enter"&&onStart(typed)}/>
+            <button className="hero-build-btn" style={{margin:0,border:"none",background:"var(--accent)",color:"var(--bg)",fontFamily:"var(--font)",fontWeight:600,fontSize:13,padding:"15px 20px",cursor:"pointer",flexShrink:0}} onClick={()=>onStart(typed)}>Build Roadmap →</button>
           </div>
         </div>
         <p style={{fontSize:11,color:"var(--subtle)",marginBottom:26,fontFamily:"var(--font-mono)"}}>No credit card · 30 seconds to set up</p>
